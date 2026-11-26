@@ -53,9 +53,8 @@
  * fill the sidebar width. */
 .st-cq-avatar.avatar {
     flex: 0 0 auto;
-    width: 100%;
-    height: auto;
-    aspect-ratio: 1 / 1;
+    width: 100% !important;
+    height: auto !important;
     overflow: hidden;
 }
 
@@ -282,8 +281,8 @@
 
     .st-cq-side .st-cq-avatar.avatar {
         flex: 0 0 auto;
-        width: 76px;
-        height: 76px;
+        width: 95px !important;
+        height: auto !important;
     }
 
     .st-cq-actions {

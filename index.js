@@ -596,6 +596,7 @@ function renderSections(preview) {
         .filter((greeting) => typeof greeting === 'string' && greeting.trim());
 
     let sectionCount = 0;
+    sectionCount += addTextSection(body, 'Creator\'s Notes', data.creatorNotes, { mediaAllowed });
     sectionCount += addTextSection(body, 'Description', data.description, { open: true, mediaAllowed });
     if (greetings.length > 0) {
         body.append(createGreetingsSection(greetings, { mediaAllowed }));
@@ -610,7 +611,6 @@ function renderSections(preview) {
         meta: formatDepthMeta(data.depthDepth, data.depthRole),
         mediaAllowed,
     });
-    sectionCount += addTextSection(body, 'Creator\'s Notes', data.creatorNotes, { mediaAllowed });
 
     if (sectionCount === 0) {
         const empty = document.createElement('div');

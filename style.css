@@ -167,6 +167,12 @@
     overflow-x: auto;
 }
 
+.st-cq-media-note {
+    display: block;
+    margin-top: 6px;
+    opacity: 0.6;
+}
+
 /* Greetings pager */
 .st-cq-greetings {
     display: flex;

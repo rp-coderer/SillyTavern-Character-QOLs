@@ -44,6 +44,11 @@ popup, markdown converter and theme, so it looks and feels native.
   be shown in previews regardless of the character setting.
 - Bulk-edit mode, group member lists, hot-swap avatars and the card context menu keep
   their original behavior.
+- **Tabbed character editor.** Description and First message in the native character
+  editor (the two big text boxes) become two tabs, so the active textarea fills the panel
+  instead of being a fixed-height box that has to be resized. The last used tab is
+  remembered per account. Spoiler-free mode is respected: when it hides both text blocks,
+  the tab strip hides too. Can be turned off in the settings.
 
 ## Installation
 
@@ -54,6 +59,7 @@ popup, markdown converter and theme, so it looks and feels native.
    - "Preview characters in a popup"
    - "Always show external media in previews" (ignores each character's Ext. Media setting
      in previews only; chats are unaffected)
+   - "Tabbed Description / First message editor" (on by default)
 
 ## Usage
 

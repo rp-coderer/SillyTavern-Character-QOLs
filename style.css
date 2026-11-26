@@ -309,3 +309,76 @@
         overflow: visible;
     }
 }
+
+/* ── Native character editor: Description / First message tabs ───────────── */
+
+.st-cq-editor-tabbar {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 5px;
+    margin: 6px 0;
+}
+
+.st-cq-editor-tab {
+    display: flex;
+    flex: 1 1 0;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    padding: 4px 8px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 5px;
+    background-color: var(--SmartThemeBlurTintColor);
+    color: var(--SmartThemeBodyColor);
+    font-weight: 600;
+    text-align: center;
+    opacity: 0.8;
+    cursor: pointer;
+    transition: opacity var(--animation-duration-2x);
+}
+
+.st-cq-editor-tab:hover {
+    opacity: 1;
+}
+
+.st-cq-editor-tab.active {
+    background-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 33%, var(--SmartThemeBlurTintColor) 66%);
+    opacity: 1;
+}
+
+.st-cq-editor-tab:focus-visible {
+    outline: 2px solid var(--SmartThemeQuoteColor);
+    outline-offset: 1px;
+}
+
+.st-cq-editor-tabbar.st-cq-tabbar-hidden {
+    display: none;
+}
+
+.st-cq-editor-tabbed .st-cq-tab-hidden {
+    display: none !important;
+}
+
+/* The visible block fills the leftover height of the editor form. */
+.st-cq-editor-tabbed #descriptionWrapper,
+.st-cq-editor-tabbed #firstMessageWrapper {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+}
+
+/* The textarea fills its block instead of using a fixed height. */
+.st-cq-editor-tabbed #descriptionWrapper #description_textarea,
+.st-cq-editor-tabbed #firstMessageWrapper #firstmessage_textarea {
+    flex: 1 1 auto;
+    height: auto;
+    min-height: 8em;
+    resize: none;
+}
+
+/* The tab already names the block; keep only its tool buttons in the header. */
+.st-cq-editor-tabbed #description_div > .flex-container > span,
+.st-cq-editor-tabbed #first_message_div > .flex-container > span {
+    display: none;
+}

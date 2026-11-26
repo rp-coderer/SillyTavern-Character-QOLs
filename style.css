@@ -1,14 +1,18 @@
 /**
  * Character QOLs
  *
- * The preview lives inside SillyTavern's own popup dialog. Only the sizing and
- * the two-column header layout are custom; colors, fonts, borders and button
- * styles all come from the active theme through the standard CSS variables.
+ * Two-column layout on wide screens: a sidebar with the character's avatar and
+ * the actions mirrored from the character editor, and a main column with the
+ * header (name, version, tags, author) and the scrollable character sections.
+ * On narrow screens everything stacks into a single scrolling column.
+ *
+ * Colors, fonts, borders and button styles all come from the active theme
+ * through the standard CSS variables.
  */
 
 /* Popup shell: sized like a wide details panel instead of a small dialog. */
 .popup.st-cq-popup {
-    width: min(1000px, 94vw);
+    width: min(1100px, 94vw);
     height: min(86dvh, 900px);
     text-align: start;
 }
@@ -24,30 +28,34 @@
     overflow: hidden;
 }
 
-/* Root layout */
+/* Root layout: sidebar + main column */
 .st-cq {
     display: flex;
     flex: 1 1 auto;
-    flex-direction: column;
-    gap: 12px;
+    gap: 18px;
     min-height: 0;
 }
 
-/* Header: native avatar, name, tags, author */
-.st-cq-head {
+/* Sidebar: avatar and actions */
+.st-cq-side {
     display: flex;
-    flex: 0 0 auto;
-    align-items: flex-start;
-    gap: 14px;
-    padding: 4px 4px 12px;
-    border-bottom: 1px solid var(--SmartThemeBorderColor);
+    flex: 0 0 200px;
+    flex-direction: column;
+    gap: 12px;
+    min-height: 0;
+    padding-right: 16px;
+    overflow-y: auto;
+    border-right: 1px solid var(--SmartThemeBorderColor);
+    scrollbar-width: thin;
 }
 
-/* Keep the native avatar component (and its theme-dependent shape) but bigger. */
+/* Keep the native avatar component (and its theme-dependent shape) but let it
+ * fill the sidebar width. */
 .st-cq-avatar.avatar {
-    --avatar-base-width: 104px;
-    --avatar-base-height: 104px;
     flex: 0 0 auto;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1 / 1;
     overflow: hidden;
 }
 
@@ -59,12 +67,41 @@
     object-fit: cover;
 }
 
-.st-cq-head-info {
+/* Action buttons, mirroring the icon buttons of the character editor toolbar */
+.st-cq-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+}
+
+.st-cq-action.menu_button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 2.4rem;
+    margin: 0;
+    padding: 0;
+    font-size: 1rem;
+}
+
+/* Main column: header + sections */
+.st-cq-main {
     display: flex;
     flex: 1 1 auto;
     flex-direction: column;
-    gap: 4px;
     min-width: 0;
+    min-height: 0;
+}
+
+/* Header: name, version, tags, author. The avatar lives in the sidebar. */
+.st-cq-head {
+    display: flex;
+    flex: 0 0 auto;
+    flex-direction: column;
+    gap: 4px;
+    padding: 0 4px 12px;
+    border-bottom: 1px solid var(--SmartThemeBorderColor);
 }
 
 /* The card's name block truncates; the detail view should wrap instead. */
@@ -76,7 +113,7 @@
 .st-cq-head .character_name_block .ch_name {
     display: block;
     overflow: visible;
-    font-size: 1.15em;
+    font-size: 1.25em;
     line-height: 1.3;
     text-overflow: unset;
     text-wrap: wrap;
@@ -98,7 +135,7 @@
     flex: 1 1 auto;
     flex-direction: column;
     min-height: 0;
-    padding-right: 4px;
+    padding: 4px 4px 0 0;
     overflow-y: auto;
     overscroll-behavior: contain;
     scrollbar-width: thin;
@@ -150,6 +187,11 @@
     height: auto;
 }
 
+.st-cq-md video,
+.st-cq-md audio {
+    max-width: 100%;
+}
+
 .st-cq-md pre {
     overflow-x: auto;
 }
@@ -193,6 +235,7 @@
     justify-content: center;
     width: 2rem;
     height: 2rem;
+    margin: 0;
     padding: 0;
 }
 
@@ -201,22 +244,69 @@
     opacity: 0.7;
 }
 
+/* Settings drawer */
+.st-cq-setting-hint {
+    display: block;
+    margin-bottom: 8px;
+    opacity: 0.7;
+}
+
 /* The Chat button already gets SillyTavern's "default button" marker because it
  * is the popup's default result. The `.st-cq-chat-button` class is kept as a
  * stable hook for theme tweaks. */
 
-@media (max-width: 600px) {
+/* Single column on narrow screens */
+@media (max-width: 700px) {
     .popup.st-cq-popup {
         width: 96vw;
         height: 88dvh;
     }
 
-    .st-cq-head {
+    .st-cq {
+        flex-direction: column;
         gap: 10px;
+        overflow-y: auto;
+        scrollbar-width: thin;
     }
 
-    .st-cq-avatar.avatar {
-        --avatar-base-width: 72px;
-        --avatar-base-height: 72px;
+    .st-cq-side {
+        flex: 0 0 auto;
+        flex-direction: row;
+        align-items: center;
+        gap: 10px;
+        padding: 0 0 10px;
+        overflow: visible;
+        border-right: 0;
+        border-bottom: 1px solid var(--SmartThemeBorderColor);
+    }
+
+    .st-cq-side .st-cq-avatar.avatar {
+        flex: 0 0 auto;
+        width: 76px;
+        height: 76px;
+    }
+
+    .st-cq-actions {
+        display: flex;
+        flex: 1 1 auto;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+
+    .st-cq-action.menu_button {
+        width: 2.4rem;
+        flex: 0 0 auto;
+    }
+
+    .st-cq-main {
+        overflow: visible;
+    }
+
+    .st-cq-head {
+        padding-bottom: 8px;
+    }
+
+    .st-cq-body {
+        overflow: visible;
     }
 }

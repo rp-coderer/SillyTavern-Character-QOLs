@@ -17,6 +17,16 @@ popup, markdown converter and theme, so it looks and feels native.
 
 - Native popup dialog (the same `Popup` component SillyTavern uses for its own dialogs).
 - Native look: theme colors, fonts, avatar shapes, tag markup and `inline-drawer` sections.
+- Two-column layout on desktop: a sidebar with the avatar and the action buttons, and the
+  character text next to it. On narrow screens it collapses into a single scrolling column.
+- Sidebar actions mirrored from the character editor toolbar:
+  - **⭐ Favorite** — toggles the favorite state through SillyTavern's character merge
+    endpoint, and refreshes the hot-swap row.
+  - **🖼️ Ext. Media** — the same three-state external media preference as the character
+    editor (global / always forbidden / always allowed), applied to this character.
+  - **🌐 World Info** — opens the linked lorebook in the World Info panel (shown only when
+    the character has a linked lorebook).
+  - **⧉ Duplicate** — SillyTavern's own duplicate flow, including its confirmation dialog.
 - Shows description, first message and alternate greetings (with a pager), scenario,
   personality, example dialogue, main prompt, post-history instructions, character's note
   and creator's notes — empty fields are omitted.
@@ -30,7 +40,8 @@ popup, markdown converter and theme, so it looks and feels native.
 - Images in descriptions, greetings and creator notes are shown according to that
   character's own **Ext. Media** setting (the button in the character editor), not the
   setting of whatever chat happens to be open. Blocked external media is replaced with a
-  short note instead of disappearing silently.
+  short note instead of disappearing silently. A setting can force all external media to
+  be shown in previews regardless of the character setting.
 - Bulk-edit mode, group member lists, hot-swap avatars and the card context menu keep
   their original behavior.
 
@@ -39,7 +50,10 @@ popup, markdown converter and theme, so it looks and feels native.
 1. Copy the `SillyTavern-Character-QOLs` folder into
    `SillyTavern/public/scripts/extensions/third-party/`.
 2. Reload the SillyTavern page.
-3. The setting "Preview characters in a popup" appears in *Extensions* → *Character QOLs*.
+3. The settings appear in *Extensions* → *Character QOLs*:
+   - "Preview characters in a popup"
+   - "Always show external media in previews" (ignores each character's Ext. Media setting
+     in previews only; chats are unaffected)
 
 ## Usage
 
@@ -48,6 +62,8 @@ popup, markdown converter and theme, so it looks and feels native.
 - **Chat** → continues that character's most recent chat (or creates one), exactly like a
   normal card click used to.
 - **Close** / `Esc` → back to the character list, unchanged (pending edits are saved).
+- Sidebar buttons act on the previewed character: Favorite, Ext. Media, World Info and
+  Duplicate.
 
 ## Notes / limitations
 

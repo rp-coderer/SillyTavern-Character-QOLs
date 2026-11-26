@@ -6,8 +6,9 @@
  *
  * Everything the popup shows comes from the same data SillyTavern uses to render
  * the card, is rendered with SillyTavern's own markdown converter and sanitizer,
- * and is presented in SillyTavern's own popup dialog. No custom overlay, no CDN
- * dependency, no second copy of the character data.
+ * and is presented in SillyTavern's own popup dialog. The sidebar buttons use
+ * SillyTavern's own APIs and dialogs, so favorites, external media preferences
+ * and lorebook links stay in sync with the rest of the UI.
  *
  * How the click is claimed
  * ------------------------
@@ -16,6 +17,9 @@
  * for the next page load" handler. Both run in the bubble phase, so a single
  * capture-phase listener on `document` can claim the click first and stop the rest
  * of the propagation with `stopImmediatePropagation()`.
+ *
+ * Clicking the card of the character whose chat is already open is left alone, so
+ * SillyTavern keeps its native behavior (opening the character editor panel).
  *
  * Only plain primary-button clicks on a `.character_select` inside
  * `#rm_print_characters_block` are claimed. Interactive children (inputs, bulk
@@ -26,8 +30,10 @@
  */
 
 import { getContext, renderExtensionTemplateAsync } from '../../../extensions.js';
-import { converter, setActiveCharacter, setActiveGroup } from '../../../../script.js';
+import { converter, duplicateCharacter, setActiveCharacter, setActiveGroup } from '../../../../script.js';
 import { decodeStyleTags, encodeStyleTags } from '../../../chats.js';
+import { favsToHotswap } from '../../../RossAscends-mods.js';
+import { openWorldInfoEditor, world_names } from '../../../world-info.js';
 
 const MODULE_NAME = 'SillyTavern-Character-QOLs';
 const EXTENSION_PATH = 'third-party/SillyTavern-Character-QOLs';
@@ -64,9 +70,10 @@ const MEDIA_ATTRIBUTE_PREFIX = 'data-st-cq-media-';
 
 const DEFAULT_SETTINGS = Object.freeze({
     enabled: true,
+    alwaysShowExternalMedia: false,
 });
 
-/** @type {{ enabled: boolean }} */
+/** @type {{ enabled: boolean, alwaysShowExternalMedia: boolean }} */
 let settings = { ...DEFAULT_SETTINGS };
 
 let initialized = false;
@@ -79,6 +86,19 @@ let openingPreview = false;
  * @type {any}
  */
 let currentPopup = null;
+
+/**
+ * The view of the preview that is currently open, or null.
+ * @type {{
+ *   root: HTMLElement,
+ *   body: HTMLElement,
+ *   sidebar: { element: HTMLElement, favorite: HTMLElement, media: HTMLElement, world: HTMLElement|null, duplicate: HTMLElement },
+ *   character: object,
+ *   context: ReturnType<typeof getContext>,
+ *   popup: any,
+ * }|null}
+ */
+let activePreview = null;
 
 /**
  * Small helper so debug output is easy to filter.
@@ -132,21 +152,34 @@ async function addSettingsPanel(context) {
         wrapper.innerHTML = html;
         container.append(wrapper);
 
-        const checkbox = wrapper.querySelector('#st_cq_enabled');
-        if (!(checkbox instanceof HTMLInputElement)) {
-            return;
-        }
-        checkbox.checked = settings.enabled;
-        checkbox.addEventListener('change', () => {
-            settings.enabled = checkbox.checked;
-            context.saveSettingsDebounced();
+        const enabled = wrapper.querySelector('#st_cq_enabled');
+        if (enabled instanceof HTMLInputElement) {
+            enabled.checked = settings.enabled;
+            enabled.addEventListener('change', () => {
+                settings.enabled = enabled.checked;
+                context.saveSettingsDebounced();
 
-            if (!settings.enabled) {
-                // Closing is the only thing left to do for a popup that is
-                // already open; the click handler ignores new ones.
-                currentPopup?.complete(context.POPUP_RESULT.CANCELLED)?.catch(() => { });
-            }
-        });
+                if (!settings.enabled) {
+                    // Closing is the only thing left to do for a popup that is
+                    // already open; the click handler ignores new ones.
+                    currentPopup?.complete(context.POPUP_RESULT.CANCELLED)?.catch(() => { });
+                }
+            });
+        }
+
+        const media = wrapper.querySelector('#st_cq_always_show_media');
+        if (media instanceof HTMLInputElement) {
+            media.checked = settings.alwaysShowExternalMedia;
+            media.addEventListener('change', () => {
+                settings.alwaysShowExternalMedia = media.checked;
+                context.saveSettingsDebounced();
+
+                if (activePreview) {
+                    renderSections(activePreview);
+                    updateSidebar(activePreview);
+                }
+            });
+        }
     } catch (error) {
         console.error('[Character QOLs] Failed to render the settings template.', error);
     }
@@ -258,6 +291,7 @@ async function openPreview(id) {
         }
     } finally {
         currentPopup = null;
+        activePreview = null;
         openingPreview = false;
     }
 }
@@ -269,9 +303,10 @@ async function openPreview(id) {
  */
 function createPopup(character, context) {
     const { Popup, POPUP_TYPE, POPUP_RESULT } = context;
-    const content = createPreviewContent(character, context);
+    const preview = createPreviewContent(character, context);
+    renderSections(preview);
 
-    const popup = new Popup(content, POPUP_TYPE.TEXT, '', {
+    const popup = new Popup(preview.root, POPUP_TYPE.TEXT, '', {
         okButton: false,
         cancelButton: false,
         animation: 'fast',
@@ -295,6 +330,10 @@ function createPopup(character, context) {
 
     popup.dlg.classList.add('st-cq-popup');
     popup.dlg.setAttribute('aria-label', `Character details: ${character.name ?? 'character'}`);
+
+    preview.popup = popup;
+    activePreview = preview;
+    updateSidebar(preview);
 
     return popup;
 }
@@ -357,69 +396,55 @@ function getCharacterData(character) {
 }
 
 /**
- * Builds the popup content: a native-looking header plus collapsible sections.
- * @param {object} character Character object from the `characters` array
- * @param {ReturnType<typeof getContext>} context
- * @returns {HTMLElement}
+ * Finds the up-to-date character object for the open preview. The `characters`
+ * array can be replaced while the popup is open (e.g. after duplicating).
+ * @param {NonNullable<typeof activePreview>} preview
+ * @returns {object}
  */
-function createPreviewContent(character, context) {
-    const data = getCharacterData(character);
-
-    const root = document.createElement('div');
-    root.className = 'st-cq';
-
-    root.append(createHeader(character, data, context));
-
-    const body = document.createElement('div');
-    body.className = 'st-cq-body';
-    root.append(body);
-
-    const greetings = [data.firstMessage, ...data.alternateGreetings]
-        .filter((greeting) => typeof greeting === 'string' && greeting.trim());
-
-    const mediaAllowed = isMediaAllowedForCharacter(character, context.powerUserSettings);
-
-    let sectionCount = 0;
-    sectionCount += addTextSection(body, 'Description', data.description, { open: true, mediaAllowed });
-    if (greetings.length > 0) {
-        body.append(createGreetingsSection(greetings, { mediaAllowed }));
-        sectionCount++;
-    }
-    sectionCount += addTextSection(body, 'Scenario', data.scenario, { mediaAllowed });
-    sectionCount += addTextSection(body, 'Personality', data.personality, { mediaAllowed });
-    sectionCount += addTextSection(body, 'Example dialogue', data.exampleDialogue, { mediaAllowed });
-    sectionCount += addTextSection(body, 'Main Prompt', data.systemPrompt, { mediaAllowed });
-    sectionCount += addTextSection(body, 'Post-History Instructions', data.postHistoryInstructions, { mediaAllowed });
-    sectionCount += addTextSection(body, 'Character\'s Note', data.depthPrompt, {
-        meta: formatDepthMeta(data.depthDepth, data.depthRole),
-        mediaAllowed,
-    });
-    sectionCount += addTextSection(body, 'Creator\'s Notes', data.creatorNotes, { mediaAllowed });
-
-    if (sectionCount === 0) {
-        const empty = document.createElement('div');
-        empty.className = 'st-cq-empty';
-        empty.textContent = 'This character has no description fields filled in.';
-        body.append(empty);
-    }
-
-    return root;
+function resolvePreviewCharacter(preview) {
+    return preview.context.characters.find((candidate) => candidate.avatar === preview.character.avatar)
+        ?? preview.character;
 }
 
 /**
- * Builds the character header: avatar, name, version, tags and author.
+ * Builds the popup skeleton: sidebar (avatar + actions) and main column
+ * (header + scrollable sections).
  * @param {object} character Character object from the `characters` array
- * @param {ReturnType<typeof getCharacterData>} data
  * @param {ReturnType<typeof getContext>} context
- * @returns {HTMLElement}
  */
-function createHeader(character, data, context) {
-    const header = document.createElement('header');
-    header.className = 'st-cq-head';
+function createPreviewContent(character, context) {
+    const root = document.createElement('div');
+    root.className = 'st-cq';
+
+    const sidebar = createSidebar(character, context);
+
+    const main = document.createElement('div');
+    main.className = 'st-cq-main';
+    main.append(createHeader(character, context));
+
+    const body = document.createElement('div');
+    body.className = 'st-cq-body';
+    main.append(body);
+
+    root.append(sidebar.element, main);
+
+    return { root, body, sidebar, character, context };
+}
+
+/**
+ * Builds the left column: the character's avatar and the action buttons mirrored
+ * from the character editor's toolbar.
+ * @param {object} character Character object from the `characters` array
+ * @param {ReturnType<typeof getContext>} context
+ */
+function createSidebar(character, context) {
+    const element = document.createElement('aside');
+    element.className = 'st-cq-side';
 
     const avatar = document.createElement('div');
     avatar.className = 'st-cq-avatar avatar';
     const image = document.createElement('img');
+    const data = getCharacterData(character);
     image.src = character.avatar && character.avatar !== 'none'
         ? context.getThumbnailUrl('avatar', character.avatar)
         : FALLBACK_AVATAR;
@@ -429,8 +454,53 @@ function createHeader(character, data, context) {
     }, { once: true });
     avatar.append(image);
 
-    const info = document.createElement('div');
-    info.className = 'st-cq-head-info';
+    const actions = document.createElement('div');
+    actions.className = 'st-cq-actions';
+
+    const favorite = createActionButton('fa-star', 'Favorite', () => toggleFavorite());
+    const media = createActionButton('fa-link', 'External media', () => openMediaPreferenceDialog());
+    const world = getLinkedWorld(character)
+        ? createActionButton('fa-globe', 'World Info', () => openWorldForPreview())
+        : null;
+    const duplicate = createActionButton('fa-clone', 'Duplicate character', () => duplicatePreviewed());
+
+    actions.append(favorite, media, ...(world ? [world] : []), duplicate);
+    element.append(avatar, actions);
+
+    return { element, favorite, media, world, duplicate };
+}
+
+/**
+ * Creates one native-looking icon button for the sidebar.
+ * @param {string} icon Font Awesome icon without the `fa-solid` prefix
+ * @param {string} title
+ * @param {() => void} onClick
+ * @returns {HTMLElement}
+ */
+function createActionButton(icon, title, onClick) {
+    const button = document.createElement('div');
+    button.className = `menu_button st-cq-action fa-solid ${icon}`;
+    button.title = title;
+    button.setAttribute('aria-label', title);
+    button.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onClick();
+    });
+    return button;
+}
+
+/**
+ * Builds the character header of the main column: name, version, tags and author.
+ * @param {object} character Character object from the `characters` array
+ * @param {ReturnType<typeof getContext>} context
+ * @returns {HTMLElement}
+ */
+function createHeader(character, context) {
+    const data = getCharacterData(character);
+
+    const header = document.createElement('header');
+    header.className = 'st-cq-head';
 
     const nameBlock = document.createElement('div');
     nameBlock.className = 'character_name_block';
@@ -446,21 +516,20 @@ function createHeader(character, data, context) {
         version.title = `Character version: ${data.version}`;
         nameBlock.append(version);
     }
-    info.append(nameBlock);
+    header.append(nameBlock);
 
     const tags = createTagList(character, context);
     if (tags) {
-        info.append(tags);
+        header.append(tags);
     }
 
     if (data.creator) {
         const meta = document.createElement('div');
         meta.className = 'st-cq-meta';
         meta.textContent = `Created by ${data.creator}`;
-        info.append(meta);
+        header.append(meta);
     }
 
-    header.append(avatar, info);
     return header;
 }
 
@@ -508,6 +577,371 @@ function createTagList(character, context) {
     }
 
     return list.childElementCount > 0 ? list : null;
+}
+
+/**
+ * Fills the scrollable body with the collapsible character sections.
+ * Can be called again to refresh the content in place (e.g. after changing the
+ * external media preference).
+ * @param {{ body: HTMLElement, character: object, context: ReturnType<typeof getContext> }} preview
+ */
+function renderSections(preview) {
+    const { body, character, context } = preview;
+    const data = getCharacterData(character);
+    const mediaAllowed = isPreviewMediaAllowed(character, context);
+
+    body.replaceChildren();
+
+    const greetings = [data.firstMessage, ...data.alternateGreetings]
+        .filter((greeting) => typeof greeting === 'string' && greeting.trim());
+
+    let sectionCount = 0;
+    sectionCount += addTextSection(body, 'Description', data.description, { open: true, mediaAllowed });
+    if (greetings.length > 0) {
+        body.append(createGreetingsSection(greetings, { mediaAllowed }));
+        sectionCount++;
+    }
+    sectionCount += addTextSection(body, 'Scenario', data.scenario, { mediaAllowed });
+    sectionCount += addTextSection(body, 'Personality', data.personality, { mediaAllowed });
+    sectionCount += addTextSection(body, 'Example dialogue', data.exampleDialogue, { mediaAllowed });
+    sectionCount += addTextSection(body, 'Main Prompt', data.systemPrompt, { mediaAllowed });
+    sectionCount += addTextSection(body, 'Post-History Instructions', data.postHistoryInstructions, { mediaAllowed });
+    sectionCount += addTextSection(body, 'Character\'s Note', data.depthPrompt, {
+        meta: formatDepthMeta(data.depthDepth, data.depthRole),
+        mediaAllowed,
+    });
+    sectionCount += addTextSection(body, 'Creator\'s Notes', data.creatorNotes, { mediaAllowed });
+
+    if (sectionCount === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'st-cq-empty';
+        empty.textContent = 'This character has no description fields filled in.';
+        body.append(empty);
+    }
+}
+
+/**
+ * Updates the sidebar buttons to match the current character state.
+ * @param {NonNullable<typeof activePreview>} preview
+ */
+function updateSidebar(preview) {
+    const character = resolvePreviewCharacter(preview);
+    const context = preview.context;
+    const powerUser = context.powerUserSettings;
+    const sidebar = preview.sidebar;
+
+    const favorite = isFavorite(character);
+    sidebar.favorite.classList.toggle('fav_on', favorite);
+    sidebar.favorite.classList.toggle('fav_off', !favorite);
+    setActionTitle(sidebar.favorite, favorite ? 'Remove from favorites' : 'Add to favorites');
+
+    const mediaAllowed = isPreviewMediaAllowed(character, context);
+    sidebar.media.classList.toggle('fa-link', mediaAllowed);
+    sidebar.media.classList.toggle('fa-link-slash', !mediaAllowed);
+
+    if (settings.alwaysShowExternalMedia) {
+        setActionTitle(sidebar.media, 'External media (previews always show it)');
+    } else {
+        const state = getMediaState(character.avatar, powerUser);
+        if (state === 'allow') {
+            setActionTitle(sidebar.media, 'External media: always allowed for this character');
+        } else if (state === 'forbid') {
+            setActionTitle(sidebar.media, 'External media: always forbidden for this character');
+        } else {
+            const globalState = powerUser.forbid_external_media ? 'forbidden' : 'allowed';
+            setActionTitle(sidebar.media, `External media: follows the global setting (${globalState})`);
+        }
+    }
+
+    if (sidebar.world) {
+        const worldName = getLinkedWorld(character);
+        sidebar.world.classList.toggle('world_set', Boolean(worldName));
+        setActionTitle(sidebar.world, worldName ? `World Info: ${worldName}` : 'World Info');
+    }
+}
+
+/**
+ * Sets the tooltip and the accessible name of an action button.
+ * @param {HTMLElement} button
+ * @param {string} title
+ */
+function setActionTitle(button, title) {
+    button.title = title;
+    button.setAttribute('aria-label', title);
+}
+
+/**
+ * Returns the linked lorebook name if it is loaded in the World Info list.
+ * @param {object} character
+ * @returns {string}
+ */
+function getLinkedWorld(character) {
+    const worldName = character?.data?.extensions?.world;
+    if (!worldName || !Array.isArray(world_names) || !world_names.includes(worldName)) {
+        return '';
+    }
+    return worldName;
+}
+
+/**
+ * @param {object} character
+ * @returns {boolean}
+ */
+function isFavorite(character) {
+    return character?.fav === true || character?.fav === 'true';
+}
+
+/**
+ * @param {string} avatar
+ * @param {ReturnType<typeof getContext>['powerUserSettings']} powerUser
+ * @returns {'global'|'allow'|'forbid'}
+ */
+function getMediaState(avatar, powerUser) {
+    if (powerUser?.external_media_allowed_overrides?.includes(avatar)) {
+        return 'allow';
+    }
+    if (powerUser?.external_media_forbidden_overrides?.includes(avatar)) {
+        return 'forbid';
+    }
+    return 'global';
+}
+
+/**
+ * Checks whether external media is allowed for this character, mirroring the
+ * per-entity override SillyTavern stores for chats. The "always show" setting
+ * overrides it for previews only.
+ * @param {object} character
+ * @param {ReturnType<typeof getContext>} context
+ * @returns {boolean}
+ */
+function isPreviewMediaAllowed(character, context) {
+    if (settings.alwaysShowExternalMedia) {
+        return true;
+    }
+    const avatar = character?.avatar;
+    const powerUser = context.powerUserSettings;
+    if (!avatar) {
+        return !powerUser?.forbid_external_media;
+    }
+    const state = getMediaState(avatar, powerUser);
+    if (state === 'allow') {
+        return true;
+    }
+    if (state === 'forbid') {
+        return false;
+    }
+    return !powerUser?.forbid_external_media;
+}
+
+/**
+ * Toggles the previewed character's favorite state through SillyTavern's own
+ * character merge endpoint (the same one the bulk-edit context menu uses).
+ */
+async function toggleFavorite() {
+    const preview = activePreview;
+    if (!preview) {
+        return;
+    }
+
+    const character = resolvePreviewCharacter(preview);
+    const newFavorite = !isFavorite(character);
+
+    try {
+        const response = await fetch('/api/characters/merge-attributes', {
+            method: 'POST',
+            headers: preview.context.getRequestHeaders(),
+            body: JSON.stringify({
+                name: character.name,
+                avatar: character.avatar,
+                data: { extensions: { fav: newFavorite } },
+                fav: newFavorite,
+            }),
+        });
+
+        if (!response.ok) {
+            throw new Error(`Request failed with status ${response.status}`);
+        }
+
+        character.fav = newFavorite;
+        if (character.data?.extensions) {
+            character.data.extensions.fav = newFavorite;
+        }
+
+        // Refresh the card in the list and the hot-swap row.
+        const id = preview.context.characters.indexOf(character);
+        document.getElementById(`CharID${id}`)?.classList.toggle('is_fav', newFavorite);
+        await favsToHotswap();
+
+        if (activePreview === preview) {
+            updateSidebar(preview);
+        }
+    } catch (error) {
+        console.error('[Character QOLs] Failed to update the favorite state.', error);
+    }
+}
+
+/**
+ * Duplicates the previewed character with SillyTavern's own flow (it asks for
+ * confirmation first).
+ */
+async function duplicatePreviewed() {
+    const preview = activePreview;
+    if (!preview) {
+        return;
+    }
+
+    const character = resolvePreviewCharacter(preview);
+    const avatar = character.avatar;
+    await duplicateCharacter({ avatar });
+
+    if (activePreview === preview) {
+        const refreshed = preview.context.characters.find((candidate) => candidate.avatar === avatar);
+        if (refreshed) {
+            preview.character = refreshed;
+            renderSections(preview);
+            updateSidebar(preview);
+        }
+    }
+}
+
+/**
+ * Opens the character's linked lorebook in SillyTavern's World Info panel. The
+ * preview has to close first, since the lorebook editor lives in the drawer
+ * behind the popup.
+ */
+async function openWorldForPreview() {
+    const preview = activePreview;
+    if (!preview) {
+        return;
+    }
+
+    const worldName = getLinkedWorld(resolvePreviewCharacter(preview));
+    if (!worldName) {
+        return;
+    }
+
+    await preview.popup.complete(preview.context.POPUP_RESULT.CANCELLED);
+    openWorldInfoEditor(worldName);
+}
+
+/**
+ * Opens SillyTavern's external media preference dialog (the three-state one from
+ * the character editor), applied to the previewed character.
+ */
+async function openMediaPreferenceDialog() {
+    const preview = activePreview;
+    if (!preview) {
+        return;
+    }
+
+    const character = resolvePreviewCharacter(preview);
+    const content = createMediaDialogContent(preview.context, character.avatar);
+
+    const dialog = new preview.context.Popup(content, preview.context.POPUP_TYPE.TEXT, '', {
+        animation: 'fast',
+        leftAlign: true,
+    });
+    dialog.dlg.classList.add('st-cq-media-popup');
+    await dialog.show();
+}
+
+/**
+ * Builds the body of the external media dialog. Radio changes apply immediately,
+ * like they do in the native version.
+ * @param {ReturnType<typeof getContext>} context
+ * @param {string} avatar
+ * @returns {HTMLElement}
+ */
+function createMediaDialogContent(context, avatar) {
+    const powerUser = context.powerUserSettings;
+    const current = getMediaState(avatar, powerUser);
+    const globalState = powerUser.forbid_external_media ? 'forbidden' : 'allowed';
+
+    const content = document.createElement('div');
+    content.className = 'st-cq-media-dialog flex-container flexFlowColumn';
+
+    const title = document.createElement('h4');
+    title.className = 'margin0';
+    title.textContent = 'Ability of this character to use external media in chats.';
+
+    const subtitle = document.createElement('small');
+    subtitle.className = 'marginBot5';
+    subtitle.textContent = 'Media: images, videos, audio. External: not hosted on the local server.';
+
+    content.append(title, subtitle);
+
+    const options = [
+        { value: 'global', label: `Use global setting (${globalState})` },
+        { value: 'forbid', label: 'Always forbidden' },
+        { value: 'allow', label: 'Always allowed' },
+    ];
+
+    for (const option of options) {
+        const id = `st-cq-media-${option.value}`;
+        const label = document.createElement('label');
+        label.className = 'checkbox_label';
+        label.htmlFor = id;
+
+        const input = document.createElement('input');
+        input.type = 'radio';
+        input.name = 'st-cq-media-override';
+        input.id = id;
+        input.value = option.value;
+        input.checked = current === option.value;
+        input.addEventListener('change', () => {
+            if (input.checked) {
+                setMediaPreference(option.value);
+            }
+        });
+
+        const text = document.createElement('span');
+        text.textContent = option.label;
+
+        label.append(input, text);
+        content.append(label);
+    }
+
+    return content;
+}
+
+/**
+ * Writes the previewed character's media preference to the same settings the
+ * native Ext. Media button uses.
+ * @param {'global'|'allow'|'forbid'} state
+ */
+function setMediaPreference(state) {
+    const preview = activePreview;
+    if (!preview) {
+        return;
+    }
+
+    const character = resolvePreviewCharacter(preview);
+    const avatar = character.avatar;
+    const powerUser = preview.context.powerUserSettings;
+    const allowed = powerUser.external_media_allowed_overrides ??= [];
+    const forbidden = powerUser.external_media_forbidden_overrides ??= [];
+
+    const allowedIndex = allowed.indexOf(avatar);
+    if (allowedIndex !== -1) {
+        allowed.splice(allowedIndex, 1);
+    }
+    const forbiddenIndex = forbidden.indexOf(avatar);
+    if (forbiddenIndex !== -1) {
+        forbidden.splice(forbiddenIndex, 1);
+    }
+
+    if (state === 'allow') {
+        allowed.push(avatar);
+    } else if (state === 'forbid') {
+        forbidden.push(avatar);
+    }
+
+    preview.context.saveSettingsDebounced();
+
+    if (activePreview === preview) {
+        renderSections(preview);
+        updateSidebar(preview);
+    }
 }
 
 /**
@@ -667,27 +1101,6 @@ function formatDepthMeta(depth, role) {
         parts.push(role);
     }
     return parts.join(' · ');
-}
-
-/**
- * Checks whether external media is allowed for this character, mirroring the
- * per-entity override SillyTavern stores for chats.
- * @param {object} character
- * @param {ReturnType<typeof getContext>['powerUserSettings']} powerUser
- * @returns {boolean}
- */
-function isMediaAllowedForCharacter(character, powerUser) {
-    const avatar = character?.avatar;
-    if (!avatar) {
-        return !powerUser?.forbid_external_media;
-    }
-    if (powerUser?.external_media_allowed_overrides?.includes(avatar)) {
-        return true;
-    }
-    if (powerUser?.external_media_forbidden_overrides?.includes(avatar)) {
-        return false;
-    }
-    return !powerUser?.forbid_external_media;
 }
 
 /**

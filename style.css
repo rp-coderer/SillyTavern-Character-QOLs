@@ -224,8 +224,24 @@
 .st-cq-greeting-nav {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: 8px;
+}
+
+.st-cq-greeting-pager {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+/* Field label plus its inline controls (the expand icon), so the icon sits
+ * right after the title instead of being pushed against the drawer chevron. */
+.st-cq-section-heading {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
 }
 
 .st-cq-greeting-button {
@@ -397,6 +413,21 @@
 .st-cq-editing .st-cq-actions {
     opacity: 0.55;
     pointer-events: none;
+}
+
+/* Expand-editor icon next to a field, mirroring the native `.editor_maximize`
+ * button that SillyTavern shows right next to its field label. */
+.st-cq-expand {
+    cursor: pointer;
+    padding: 2px 4px;
+    opacity: 0.75;
+    filter: grayscale(1);
+    transition: opacity var(--animation-duration-2x, 0.3s) ease-in-out;
+}
+
+.st-cq-expand:hover,
+.st-cq-expand:focus-visible {
+    opacity: 1;
 }
 
 /* Footer buttons: Edit / Save / Cancel next to the native Chat / Close pair. */

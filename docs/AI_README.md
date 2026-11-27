@@ -50,7 +50,9 @@ popup, markdown converter and theme, so it looks and feels native.
   post-history instructions and character's note. Only the changed fields are written, via
   SillyTavern's character merge endpoint, so the chats are never touched. Empty fields are
   shown in edit mode so they can be filled in. **Save** writes the changes; **Cancel**
-  discards them; closing the popup with unsaved changes asks before discarding.
+  discards them; closing the popup with unsaved changes asks before discarding. Every
+  field has a maximize button, like the native editor's **Expand the editor**, which opens
+  a full-screen textarea; typing there updates the draft live.
 - Bulk-edit mode, group member lists, hot-swap avatars and the card context menu keep
   their original behavior.
 - **Tabbed character editor.** Description and First message in the native character
@@ -77,7 +79,8 @@ popup, markdown converter and theme, so it looks and feels native.
 - **Chat** → continues that character's most recent chat (or creates one), exactly like a
   normal card click used to.
 - **Edit** → edits the card text inside the popup (see above). **Save** writes, **Cancel**
-  discards.
+  discards. The maximize icon next to a field (or next to the greeting pager) opens a
+  full-screen editor for long text.
 - **Close** / `Esc` → back to the character list, unchanged. If the editor has unsaved
   changes, a confirmation asks whether to discard them.
 - Sidebar buttons act on the previewed character: Favorite, Ext. Media, World Info and

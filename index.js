@@ -1033,11 +1033,13 @@ function renderEditSections(preview) {
         }
 
         const field = EDITABLE_FIELDS[key];
+        const textarea = createEditTextarea(preview, key);
         const { drawer, content } = createSection(field.title, {
             open: true,
             meta: field.meta?.(character) ?? '',
+            actions: [createExpandButton(textarea, field.title)],
         });
-        content.append(createEditTextarea(preview, key));
+        content.append(textarea);
         preview.body.append(drawer);
     }
 }
@@ -1073,20 +1075,26 @@ function createEditTextarea(preview, key) {
 function createGreetingsEditor(preview) {
     const edit = preview.edit;
     const count = edit.greetings.length;
-    const { drawer, content } = createSection(
-        count > 1 ? 'Greetings' : 'First Message',
-        { open: true, meta: count > 1 ? `${count} greetings` : '' },
-    );
-
-    const wrapper = document.createElement('div');
-    wrapper.className = 'st-cq-greetings';
-
-    let label = null;
+    const hasPager = count > 1;
+    const title = hasPager ? 'Greetings' : 'First Message';
 
     const textarea = document.createElement('textarea');
     textarea.className = 'st-cq-edit-field';
     textarea.rows = 5;
     textarea.spellcheck = false;
+
+    const expand = createExpandButton(textarea, hasPager ? 'Greeting' : 'First message');
+    const { drawer, content } = createSection(title, {
+        open: true,
+        meta: hasPager ? `${count} greetings` : '',
+        // Without a pager row, the header is the only place for the expand button.
+        actions: hasPager ? [] : [expand],
+    });
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'st-cq-greetings';
+
+    let label = null;
 
     const sync = () => {
         textarea.value = edit.greetings[edit.index] ?? '';
@@ -1101,9 +1109,12 @@ function createGreetingsEditor(preview) {
         updateEditDirty(preview);
     });
 
-    if (count > 1) {
+    if (hasPager) {
         const nav = document.createElement('div');
         nav.className = 'st-cq-greeting-nav';
+
+        const pager = document.createElement('div');
+        pager.className = 'st-cq-greeting-pager';
 
         const previous = createNavButton('fa-chevron-left', 'Previous greeting');
         label = document.createElement('span');
@@ -1119,7 +1130,8 @@ function createGreetingsEditor(preview) {
             sync();
         });
 
-        nav.append(previous, label, next);
+        pager.append(previous, label, expand, next);
+        nav.append(pager);
         wrapper.append(nav);
     }
 
@@ -1620,19 +1632,31 @@ function addTextSection(parent, title, text, { open = false, meta = '', mediaAll
 /**
  * Adds a collapsible section shell.
  * @param {string} title
- * @param {{ open?: boolean, meta?: string }} [options]
+ * @param {{ open?: boolean, meta?: string, actions?: HTMLElement[] }} [options]
+ * @param {HTMLElement[]} [options.actions] Extra header controls, placed before the chevron
  * @returns {{ drawer: HTMLElement, content: HTMLElement }}
  */
-function createSection(title, { open = false, meta = '' } = {}) {
+function createSection(title, { open = false, meta = '', actions = [] } = {}) {
     const drawer = document.createElement('div');
     drawer.className = 'inline-drawer st-cq-section';
 
     const header = document.createElement('div');
     header.className = 'inline-drawer-toggle inline-drawer-header';
 
+    const heading = document.createElement('div');
+    heading.className = 'st-cq-section-heading';
+
     const label = document.createElement('b');
     label.textContent = title;
-    header.append(label);
+    heading.append(label);
+
+    // Header controls sit right next to the title, like the native editor's
+    // expand button sits next to its label.
+    for (const action of actions) {
+        heading.append(action);
+    }
+
+    header.append(heading);
 
     const headerRight = document.createElement('div');
     headerRight.className = 'flex-container alignItemsBaseline';
@@ -1714,7 +1738,10 @@ function createGreetingsSection(greetings, { mediaAllowed = true } = {}) {
             renderGreeting();
         });
 
-        nav.append(previous, label, next);
+        const pager = document.createElement('div');
+        pager.className = 'st-cq-greeting-pager';
+        pager.append(previous, label, next);
+        nav.append(pager);
         wrapper.prepend(nav);
     }
 
@@ -1735,6 +1762,70 @@ function createNavButton(icon, title) {
     button.title = title;
     button.setAttribute('aria-label', title);
     return button;
+}
+
+/**
+ * Creates the "expand editor" icon shown next to an editable field in the popup,
+ * mirroring SillyTavern's own `.editor_maximize` button.
+ * @param {HTMLTextAreaElement} textarea The textarea this button expands
+ * @param {string} title Accessible name of the edited field
+ * @returns {HTMLElement}
+ */
+function createExpandButton(textarea, title) {
+    const button = document.createElement('div');
+    button.className = 'st-cq-expand interactable fa-solid fa-maximize';
+    button.tabIndex = 0;
+    button.setAttribute('role', 'button');
+    button.title = 'Expand the editor';
+    button.setAttribute('aria-label', `Expand the editor: ${title}`);
+
+    button.addEventListener('click', (event) => {
+        // The button sits inside the drawer header, so its click must not reach
+        // the native inline-drawer toggle (that would collapse the section).
+        event.preventDefault();
+        event.stopPropagation();
+        openExpandedEditor(textarea, title).catch((error) => {
+            console.error('[Character QOLs] Failed to open the expanded editor.', error);
+        });
+    });
+
+    return button;
+}
+
+/**
+ * Opens a full-screen editor for one of the popup textareas. This mirrors the
+ * popup opened by SillyTavern's `.editor_maximize` handler, without relying on
+ * its delegated document click (see {@link createExpandButton}).
+ * @param {HTMLTextAreaElement} textarea
+ * @param {string} title
+ */
+async function openExpandedEditor(textarea, title) {
+    const { Popup, POPUP_TYPE } = getContext();
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'height100p wide100p flex-container flexFlowColumn justifyCenter alignitemscenter';
+
+    const expanded = document.createElement('textarea');
+    expanded.className = 'height100p wide100p maximized_textarea';
+    expanded.spellcheck = false;
+    expanded.value = textarea.value;
+    expanded.setAttribute('aria-label', `Expand the editor: ${title}`);
+
+    // Keep the preview's textarea (and therefore the draft) in sync while typing.
+    expanded.addEventListener('input', () => {
+        textarea.value = expanded.value;
+        textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    wrapper.append(expanded);
+
+    await new Popup(wrapper, POPUP_TYPE.TEXT, '', {
+        wide: true,
+        large: true,
+        animation: 'fast',
+    }).show();
+
+    textarea.focus();
 }
 
 /**

@@ -61,6 +61,31 @@ popup, markdown converter and theme, so it looks and feels native.
   remembered per account. Spoiler-free mode is respected: when it hides both text blocks,
   the tab strip hides too. Can be turned off in the settings.
 
+## Project layout
+
+`index.js` only wires the extension together; the implementation lives under `src/` as
+ES modules (the manifest still points at `index.js`).
+
+| File | Responsibility |
+| --- | --- |
+| `index.js` | Entry point: initializes the settings, renders the settings panel, binds the card-click listener and sets up the editor tabs on `APP_READY`. |
+| `src/st.js` | Single bridge to SillyTavern's own modules, so the relative path depth lives in one place. |
+| `src/settings.js` | Module identity, defaults, the live `settings` object and the settings panel. |
+| `src/state.js` | Shared `previewState` (active preview, open popup, opening guard). |
+| `src/tabs.js` | Tabbed Description / First message view for the native character editor. |
+| `src/character.js` | Character field normalization helpers. |
+| `src/media.js` | Markdown rendering, sanitizing and the external-media policy. |
+| `src/sections.js` | Shared drawer and nav-button UI kit. |
+| `src/popup.js` | Click claim, popup shell, footer buttons and the Chat action. |
+| `src/popup/view.js` | Read-only preview content: header, sidebar, tags and sections. |
+| `src/popup/editor.js` | Minimal in-popup editor and the expanded editor. |
+| `src/popup/actions.js` | Sidebar actions: favorite, external media, World Info and duplicate. |
+| `style.css` | All styles, still loaded from `manifest.json`. |
+
+The preview object created in `src/popup.js` also carries `preview.refresh()` and
+`preview.setEditing()`, so the editor and the sidebar actions can update the view without
+importing it (which would create a module cycle).
+
 ## Installation
 
 1. Copy the `SillyTavern-Character-QOLs` folder into

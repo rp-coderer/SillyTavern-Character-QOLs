@@ -25,8 +25,16 @@
  * `#rm_print_characters_block` are claimed. Interactive children (inputs, bulk
  * edit checkboxes, ...) and bulk selection mode are left to SillyTavern.
  *
- * Phase 2 (not implemented here) will reuse the native character editor inside
- * the same popup; this file only contains the read-only preview.
+ * A minimal editor
+ * -----------------
+ * The footer's Edit button turns the same popup into a small editor for the card
+ * text fields. It deliberately does not reuse SillyTavern's own editor form: that
+ * form is bound to `this_chid`, the character of the *current chat*, so its toolbar
+ * would act on the wrong character, its autosave would reset the active chat's
+ * opener, and its body-level popovers (tags, export, World Info) cannot render
+ * above a `<dialog>`. Instead the drafts live in the popup and are saved with the
+ * `/api/characters/merge-attributes` endpoint, which updates only the given card
+ * attributes and leaves the chat alone.
  */
 
 import { getContext, renderExtensionTemplateAsync } from '../../../extensions.js';
@@ -479,6 +487,7 @@ function createPopup(character, context) {
                 icon: 'fa-xmark',
                 result: POPUP_RESULT.CANCELLED,
                 appendAtEnd: true,
+                classes: ['st-cq-close-button'],
             },
         ],
     });
@@ -486,11 +495,86 @@ function createPopup(character, context) {
     popup.dlg.classList.add('st-cq-popup');
     popup.dlg.setAttribute('aria-label', `Character details: ${character.name ?? 'character'}`);
 
+    // Edit / Save / Cancel are plain footer buttons: they act in place and must
+    // not close the popup, so they are not registered as popup result controls.
+    const editButton = createFooterButton('Edit', 'fa-pen', () => enterEditMode(activePreview));
+    editButton.classList.add('st-cq-edit-button');
+    const saveButton = createFooterButton('Save', 'fa-floppy-disk', () => savePreviewEdits(preview));
+    saveButton.classList.add('st-cq-save-button');
+    const cancelButton = createFooterButton('Cancel', 'fa-xmark', () => exitEditMode(preview));
+    cancelButton.classList.add('st-cq-cancel-button');
+
+    preview.controls = {
+        edit: editButton,
+        chat: popup.buttonControls.querySelector('.st-cq-chat-button'),
+        close: popup.buttonControls.querySelector('.st-cq-close-button'),
+        save: saveButton,
+        cancel: cancelButton,
+    };
+    preview.controls.chat.before(editButton);
+    popup.buttonControls.append(saveButton, cancelButton);
+    setEditControlsVisible(preview, false);
+
+    popup.onClosing = () => guardPreviewClose(preview);
+
     preview.popup = popup;
     activePreview = preview;
     updateSidebar(preview);
 
     return popup;
+}
+
+/**
+ * Creates one footer button for the preview popup. These are plain buttons, not
+ * popup result controls, so clicking them never closes the popup.
+ * @param {string} text
+ * @param {string} icon Font Awesome icon name without the `fa-solid` prefix
+ * @param {() => void} onClick
+ * @returns {HTMLElement}
+ */
+function createFooterButton(text, icon, onClick) {
+    const button = document.createElement('div');
+    button.className = 'menu_button menu_button_icon st-cq-footer-button';
+    button.tabIndex = 0;
+    button.setAttribute('role', 'button');
+
+    const iconElement = document.createElement('i');
+    iconElement.className = `fa-solid ${icon}`;
+    const label = document.createElement('span');
+    label.textContent = text;
+    button.append(iconElement, label);
+
+    button.addEventListener('click', (event) => {
+        event.preventDefault();
+        onClick();
+    });
+    button.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            event.stopPropagation();
+            onClick();
+        }
+    });
+
+    return button;
+}
+
+/**
+ * Shows the footer buttons for the current preview mode.
+ * @param {NonNullable<typeof activePreview>} preview
+ * @param {boolean} editing
+ */
+function setEditControlsVisible(preview, editing) {
+    const controls = preview.controls;
+    if (!controls) {
+        return;
+    }
+
+    controls.edit.style.display = editing ? 'none' : '';
+    controls.chat.style.display = editing ? 'none' : '';
+    controls.close.style.display = editing ? 'none' : '';
+    controls.save.style.display = editing ? '' : 'none';
+    controls.cancel.style.display = editing ? '' : 'none';
 }
 
 /**
@@ -549,6 +633,101 @@ function getCharacterData(character) {
         depthRole: data.extensions?.depth_prompt?.role ?? '',
     };
 }
+
+/**
+ * Fields the minimal editor can change. Each entry maps a preview section to
+ * the card paths SillyTavern's own editor saves, so a merge request updates the
+ * same places without touching the rest of the card.
+ * @type {Record<string, {
+ *   title: string,
+ *   get: (character: object) => string,
+ *   apply: (payload: object, value: string) => void,
+ *   meta?: (character: object) => string,
+ * }>}
+ */
+const EDITABLE_FIELDS = {
+    creatorNotes: {
+        title: "Creator's Notes",
+        get: (character) => getCharacterData(character).creatorNotes,
+        apply: (payload, value) => {
+            payload.data.creator_notes = value;
+            payload.creatorcomment = value;
+        },
+    },
+    description: {
+        title: 'Description',
+        get: (character) => getCharacterData(character).description,
+        apply: (payload, value) => {
+            payload.data.description = value;
+            payload.description = value;
+        },
+    },
+    scenario: {
+        title: 'Scenario',
+        get: (character) => getCharacterData(character).scenario,
+        apply: (payload, value) => {
+            payload.data.scenario = value;
+            payload.scenario = value;
+        },
+    },
+    personality: {
+        title: 'Personality',
+        get: (character) => getCharacterData(character).personality,
+        apply: (payload, value) => {
+            payload.data.personality = value;
+            payload.personality = value;
+        },
+    },
+    exampleDialogue: {
+        title: 'Example dialogue',
+        get: (character) => getCharacterData(character).exampleDialogue,
+        apply: (payload, value) => {
+            payload.data.mes_example = value;
+            payload.mes_example = value;
+        },
+    },
+    systemPrompt: {
+        title: 'Main Prompt',
+        get: (character) => getCharacterData(character).systemPrompt,
+        apply: (payload, value) => {
+            payload.data.system_prompt = value;
+        },
+    },
+    postHistoryInstructions: {
+        title: 'Post-History Instructions',
+        get: (character) => getCharacterData(character).postHistoryInstructions,
+        apply: (payload, value) => {
+            payload.data.post_history_instructions = value;
+        },
+    },
+    depthPrompt: {
+        title: "Character's Note",
+        get: (character) => getCharacterData(character).depthPrompt,
+        meta: (character) => {
+            const data = getCharacterData(character);
+            return formatDepthMeta(data.depthDepth, data.depthRole);
+        },
+        apply: (payload, value) => {
+            payload.data.extensions = { depth_prompt: { prompt: value } };
+        },
+    },
+};
+
+/**
+ * Section order of the edit mode. `greetings` is the shared first message /
+ * alternate greetings editor; everything else is a plain text field.
+ */
+const EDIT_SECTION_LAYOUT = [
+    'creatorNotes',
+    'description',
+    'greetings',
+    'scenario',
+    'personality',
+    'exampleDialogue',
+    'systemPrompt',
+    'postHistoryInstructions',
+    'depthPrompt',
+];
 
 /**
  * Finds the up-to-date character object for the open preview. The `characters`
@@ -773,6 +952,323 @@ function renderSections(preview) {
         empty.textContent = 'This character has no description fields filled in.';
         body.append(empty);
     }
+}
+
+/**
+ * Switches the preview to its minimal editor. Everything stays inside the open
+ * popup; no chat is started and SillyTavern's own editor form is not involved.
+ * @param {NonNullable<typeof activePreview>|null} preview
+ */
+function enterEditMode(preview) {
+    if (!preview || preview.edit) {
+        return;
+    }
+
+    const character = resolvePreviewCharacter(preview);
+    const data = getCharacterData(character);
+    const drafts = new Map();
+    const originals = new Map();
+
+    for (const [key, field] of Object.entries(EDITABLE_FIELDS)) {
+        const value = field.get(character);
+        drafts.set(key, value);
+        originals.set(key, value);
+    }
+
+    const alternates = Array.isArray(character.data?.alternate_greetings)
+        ? character.data.alternate_greetings.filter((greeting) => typeof greeting === 'string')
+        : [];
+    const greetings = [data.firstMessage, ...alternates];
+
+    preview.edit = {
+        drafts,
+        originals,
+        greetings,
+        originalGreetings: [...greetings],
+        index: 0,
+        dirty: false,
+        saving: false,
+    };
+
+    preview.root.classList.add('st-cq-editing');
+    renderEditSections(preview);
+    updateEditDirty(preview);
+    setEditControlsVisible(preview, true);
+
+    // On touch devices focusing the first field would open the keyboard and hide
+    // most of the popup, so only desktop pointers get the automatic focus.
+    if (window.matchMedia?.('(pointer: fine)')?.matches) {
+        preview.body.querySelector('.st-cq-edit-field')?.focus({ preventScroll: true });
+    }
+}
+
+/**
+ * Leaves the edit mode and restores the read-only preview. Drafts are dropped.
+ * @param {NonNullable<typeof activePreview>} preview
+ */
+function exitEditMode(preview) {
+    if (!preview.edit || preview.edit.saving) {
+        return;
+    }
+
+    preview.edit = null;
+    preview.root.classList.remove('st-cq-editing');
+    setEditControlsVisible(preview, false);
+    renderSections(preview);
+}
+
+/**
+ * Rebuilds the popup body with one textarea per editable section. Unlike the
+ * read view, empty fields are shown too, so they can be filled in.
+ * @param {NonNullable<typeof activePreview>} preview
+ */
+function renderEditSections(preview) {
+    const character = resolvePreviewCharacter(preview);
+    preview.body.replaceChildren();
+
+    for (const key of EDIT_SECTION_LAYOUT) {
+        if (key === 'greetings') {
+            preview.body.append(createGreetingsEditor(preview));
+            continue;
+        }
+
+        const field = EDITABLE_FIELDS[key];
+        const { drawer, content } = createSection(field.title, {
+            open: true,
+            meta: field.meta?.(character) ?? '',
+        });
+        content.append(createEditTextarea(preview, key));
+        preview.body.append(drawer);
+    }
+}
+
+/**
+ * Creates the textarea bound to one editable field.
+ * @param {NonNullable<typeof activePreview>} preview
+ * @param {string} key A key of {@link EDITABLE_FIELDS}
+ * @returns {HTMLTextAreaElement}
+ */
+function createEditTextarea(preview, key) {
+    const textarea = document.createElement('textarea');
+    textarea.className = 'st-cq-edit-field';
+    textarea.rows = 4;
+    textarea.spellcheck = false;
+    textarea.setAttribute('aria-label', EDITABLE_FIELDS[key].title);
+    textarea.value = preview.edit.drafts.get(key) ?? '';
+
+    textarea.addEventListener('input', () => {
+        preview.edit.drafts.set(key, textarea.value);
+        updateEditDirty(preview);
+    });
+
+    return textarea;
+}
+
+/**
+ * Builds the shared greetings editor: the first message plus a pager over the
+ * alternate greetings, mirroring the read-only greetings section.
+ * @param {NonNullable<typeof activePreview>} preview
+ * @returns {HTMLElement}
+ */
+function createGreetingsEditor(preview) {
+    const edit = preview.edit;
+    const count = edit.greetings.length;
+    const { drawer, content } = createSection(
+        count > 1 ? 'Greetings' : 'First Message',
+        { open: true, meta: count > 1 ? `${count} greetings` : '' },
+    );
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'st-cq-greetings';
+
+    let label = null;
+
+    const textarea = document.createElement('textarea');
+    textarea.className = 'st-cq-edit-field';
+    textarea.rows = 5;
+    textarea.spellcheck = false;
+
+    const sync = () => {
+        textarea.value = edit.greetings[edit.index] ?? '';
+        textarea.setAttribute('aria-label', count > 1 ? `Greeting ${edit.index + 1}` : 'First message');
+        if (label) {
+            label.textContent = `${edit.index + 1} / ${count}`;
+        }
+    };
+
+    textarea.addEventListener('input', () => {
+        edit.greetings[edit.index] = textarea.value;
+        updateEditDirty(preview);
+    });
+
+    if (count > 1) {
+        const nav = document.createElement('div');
+        nav.className = 'st-cq-greeting-nav';
+
+        const previous = createNavButton('fa-chevron-left', 'Previous greeting');
+        label = document.createElement('span');
+        label.className = 'st-cq-greeting-label';
+        const next = createNavButton('fa-chevron-right', 'Next greeting');
+
+        previous.addEventListener('click', () => {
+            edit.index = (edit.index - 1 + count) % count;
+            sync();
+        });
+        next.addEventListener('click', () => {
+            edit.index = (edit.index + 1) % count;
+            sync();
+        });
+
+        nav.append(previous, label, next);
+        wrapper.append(nav);
+    }
+
+    wrapper.append(textarea);
+    sync();
+    content.append(wrapper);
+    return drawer;
+}
+
+/**
+ * Recomputes whether the draft differs from the loaded card and enables or
+ * disables the Save button accordingly.
+ * @param {NonNullable<typeof activePreview>} preview
+ */
+function updateEditDirty(preview) {
+    const edit = preview.edit;
+    if (!edit) {
+        return;
+    }
+
+    const fieldsDirty = Object.keys(EDITABLE_FIELDS)
+        .some((key) => (edit.drafts.get(key) ?? '') !== edit.originals.get(key));
+    const greetingsDirty = edit.greetings.length !== edit.originalGreetings.length
+        || edit.greetings.some((greeting, index) => greeting !== edit.originalGreetings[index]);
+
+    edit.dirty = fieldsDirty || greetingsDirty;
+
+    const disabled = !edit.dirty || edit.saving;
+    preview.controls?.save?.classList.toggle('st-cq-disabled', disabled);
+    preview.controls?.save?.setAttribute('aria-disabled', String(disabled));
+}
+
+/**
+ * Saves the edited fields with SillyTavern's merge endpoint, which updates only
+ * the given card attributes. This avoids the native editor's side effects (the
+ * opener reset and the `CHARACTER_EDITED` event of the current chat).
+ * @param {NonNullable<typeof activePreview>} preview
+ */
+async function savePreviewEdits(preview) {
+    const edit = preview.edit;
+    if (!edit || edit.saving || !edit.dirty) {
+        return;
+    }
+
+    const character = resolvePreviewCharacter(preview);
+    const payload = { avatar: character.avatar, data: {} };
+    let hasChanges = false;
+
+    for (const [key, field] of Object.entries(EDITABLE_FIELDS)) {
+        const value = edit.drafts.get(key) ?? '';
+        if (value !== edit.originals.get(key)) {
+            field.apply(payload, value);
+            hasChanges = true;
+        }
+    }
+
+    const greetingsChanged = edit.greetings.length !== edit.originalGreetings.length
+        || edit.greetings.some((greeting, index) => greeting !== edit.originalGreetings[index]);
+    if (greetingsChanged) {
+        payload.data.first_mes = edit.greetings[0] ?? '';
+        payload.first_mes = payload.data.first_mes;
+        if (edit.greetings.length > 1) {
+            payload.data.alternate_greetings = edit.greetings.slice(1);
+        }
+        hasChanges = true;
+    }
+
+    if (!hasChanges) {
+        updateEditDirty(preview);
+        return;
+    }
+
+    edit.saving = true;
+    const saveLabel = preview.controls.save.querySelector('span');
+    const previousLabel = saveLabel?.textContent ?? 'Save';
+    if (saveLabel) {
+        saveLabel.textContent = 'Saving…';
+    }
+    preview.controls.save.classList.add('st-cq-disabled');
+    preview.controls.cancel.classList.add('st-cq-disabled');
+
+    try {
+        const response = await fetch('/api/characters/merge-attributes', {
+            method: 'POST',
+            headers: preview.context.getRequestHeaders(),
+            body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+            throw new Error(`Request failed with status ${response.status}`);
+        }
+
+        await preview.context.getOneCharacter(character.avatar);
+        const refreshed = preview.context.characters.find((candidate) => candidate.avatar === character.avatar);
+        if (refreshed) {
+            preview.character = refreshed;
+        }
+
+        preview.edit = null;
+        preview.root.classList.remove('st-cq-editing');
+        if (saveLabel) {
+            saveLabel.textContent = previousLabel;
+        }
+        preview.controls.save.classList.remove('st-cq-disabled');
+        preview.controls.cancel.classList.remove('st-cq-disabled');
+        setEditControlsVisible(preview, false);
+        renderSections(preview);
+        updateSidebar(preview);
+        toastr.success('Character saved.');
+    } catch (error) {
+        console.error('[Character QOLs] Failed to save the character changes.', error);
+        toastr.error('Could not save the character. Check the console for details.');
+        edit.saving = false;
+        if (saveLabel) {
+            saveLabel.textContent = previousLabel;
+        }
+        preview.controls.save.classList.remove('st-cq-disabled');
+        preview.controls.cancel.classList.remove('st-cq-disabled');
+        updateEditDirty(preview);
+    }
+}
+
+/**
+ * Confirms discarding unsaved edits when the popup is closed by Escape or by
+ * a closing action.
+ * @param {NonNullable<typeof activePreview>} preview
+ * @returns {Promise<boolean>}
+ */
+async function guardPreviewClose(preview) {
+    const edit = preview.edit;
+    if (!edit) {
+        return true;
+    }
+    if (edit.saving) {
+        return false;
+    }
+    if (!edit.dirty) {
+        return true;
+    }
+
+    const { Popup, POPUP_TYPE, POPUP_RESULT } = preview.context;
+    const confirm = new Popup(
+        '<p>You have unsaved changes. Discard them and close the preview?</p>',
+        POPUP_TYPE.CONFIRM,
+        '',
+        { okButton: 'Discard', cancelButton: 'Keep editing', animation: 'fast' },
+    );
+
+    return await confirm.show() === POPUP_RESULT.AFFIRMATIVE;
 }
 
 /**

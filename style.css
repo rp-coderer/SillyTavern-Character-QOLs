@@ -382,3 +382,31 @@
 .st-cq-editor-tabbed #first_message_div > .flex-container > span {
     display: none;
 }
+
+/* ── Minimal editor ──────────────────────────────────────────────────────── */
+
+/* The textareas keep SillyTavern's native styling; only the height is adjusted
+ * so a section reads comfortably inside the popup. */
+.st-cq-edit-field {
+    min-height: 9em;
+    margin: 0;
+    resize: vertical;
+}
+
+/* The read-only sidebar actions are not usable while editing. */
+.st-cq-editing .st-cq-actions {
+    opacity: 0.55;
+    pointer-events: none;
+}
+
+/* Footer buttons: Edit / Save / Cancel next to the native Chat / Close pair. */
+.st-cq-footer-button.st-cq-disabled {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+@media (max-width: 700px) {
+    .st-cq-edit-field {
+        min-height: 7em;
+    }
+}

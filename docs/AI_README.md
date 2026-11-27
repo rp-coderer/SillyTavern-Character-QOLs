@@ -4,7 +4,8 @@ Quality-of-life fixes for how SillyTavern handles characters and chats.
 
 **Phase 1 — character preview.** Clicking a character card in the character list opens a
 details popup instead of immediately loading (or resuming) that character's chat. You
-decide to chat from the popup.
+decide to chat from the popup, and can make quick text edits to the card without opening
+its chat.
 
 ## Why
 
@@ -42,6 +43,14 @@ popup, markdown converter and theme, so it looks and feels native.
   setting of whatever chat happens to be open. Blocked external media is replaced with a
   short note instead of disappearing silently. A setting can force all external media to
   be shown in previews regardless of the character setting.
+- **Minimal in-popup editor.** The popup's **Edit** button turns the same view into a
+  text editor for the card, so a character can be tweaked without leaving the current chat
+  or loading that character's chat first. It edits creator's notes, description, first
+  message and alternate greetings, scenario, personality, example dialogue, main prompt,
+  post-history instructions and character's note. Only the changed fields are written, via
+  SillyTavern's character merge endpoint, so the chats are never touched. Empty fields are
+  shown in edit mode so they can be filled in. **Save** writes the changes; **Cancel**
+  discards them; closing the popup with unsaved changes asks before discarding.
 - Bulk-edit mode, group member lists, hot-swap avatars and the card context menu keep
   their original behavior.
 - **Tabbed character editor.** Description and First message in the native character
@@ -67,12 +76,19 @@ popup, markdown converter and theme, so it looks and feels native.
   native character editor opens instead.
 - **Chat** → continues that character's most recent chat (or creates one), exactly like a
   normal card click used to.
-- **Close** / `Esc` → back to the character list, unchanged (pending edits are saved).
+- **Edit** → edits the card text inside the popup (see above). **Save** writes, **Cancel**
+  discards.
+- **Close** / `Esc` → back to the character list, unchanged. If the editor has unsaved
+  changes, a confirmation asks whether to discard them.
 - Sidebar buttons act on the previewed character: Favorite, Ext. Media, World Info and
-  Duplicate.
+  Duplicate. They are disabled while editing.
+- Saving from the popup leaves the open chat exactly as it is: the character's chat opener
+  is not regenerated and no `CHARACTER_EDITED` event is emitted.
 
 ## Notes / limitations
 
+- The minimal editor only covers text fields. Name, tags, avatar, version, creator and
+  alternate greeting *management* (adding/removing greetings) stay in the native editor.
 - Character text is shown as authored; macros such as `{{char}}` are not substituted in
   the preview.
 - Custom CSS embedded in creator notes is scoped to the preview content so it cannot leak
@@ -82,8 +98,11 @@ popup, markdown converter and theme, so it looks and feels native.
 
 ## Roadmap
 
-- Phase 2: edit mode inside the popup, using SillyTavern's real character editor
-  (`#rm_ch_create_block` and the advanced definitions popup) instead of reimplementing it.
+- Full native-editor-in-popup is intentionally not planned: the native form is bound to the
+  current chat's character (`this_chid`), so its toolbar would act on the wrong card, its
+  autosave would reset the open chat's opener, and its body-level popovers (tags, export,
+  World Info) cannot render above a dialog. The minimal editor covers the common quick
+  edits instead. Possible follow-ups: editing tags and alternate greeting management.
 
 ## Compatibility
 

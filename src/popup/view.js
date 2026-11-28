@@ -7,7 +7,10 @@
 import { createNavButton, createSection } from '../sections.js';
 import { renderInto } from '../media.js';
 import { settings } from '../settings.js';
+import { previewState } from '../state.js';
 import { FALLBACK_AVATAR, formatDepthMeta, getCharacterData, resolvePreviewCharacter } from '../character.js';
+import { enterEditMode, requestExitEditMode } from './editor.js';
+import { closeChatsView, openChatsView } from './chats.js';
 import {
     duplicatePreviewed,
     getLinkedWorld,
@@ -70,35 +73,87 @@ function createSidebar(character, context) {
     const actions = document.createElement('div');
     actions.className = 'st-cq-actions';
 
+    const chats = createActionButton('fa-comments', 'Chats', () => {
+        const preview = previewState.active;
+        if (preview?.chats) {
+            closeChatsView(preview);
+        } else {
+            openChatsView(preview);
+        }
+    }, { className: 'st-cq-action-chats' });
+    const edit = createActionButton('fa-pen', 'Edit', () => {
+        const preview = previewState.active;
+        if (preview?.edit) {
+            void requestExitEditMode(preview);
+        } else {
+            enterEditMode(preview);
+        }
+    }, { className: 'st-cq-action-edit' });
+
     const favorite = createActionButton('fa-star', 'Favorite', () => toggleFavorite());
-    const media = createActionButton('fa-link', 'External media', () => openMediaPreferenceDialog());
+    const media = createActionButton('fa-link', 'Ext. Media', () => openMediaPreferenceDialog());
     const world = getLinkedWorld(character)
         ? createActionButton('fa-globe', 'World Info', () => openWorldForPreview())
         : null;
-    const duplicate = createActionButton('fa-clone', 'Duplicate character', () => duplicatePreviewed());
+    const duplicate = createActionButton('fa-clone', 'Duplicate', () => duplicatePreviewed());
 
-    actions.append(favorite, media, ...(world ? [world] : []), duplicate);
+    actions.append(chats, edit, createActionDivider(), favorite, duplicate, createActionDivider());
+    if (world) {
+        actions.append(world);
+    }
+    actions.append(media);
+
     element.append(avatar, actions);
 
-    return { element, favorite, media, world, duplicate };
+    return { element, chats, edit, favorite, media, world, duplicate };
 }
 
 /**
- * Creates one native-looking icon button for the sidebar.
- * @param {string} icon Font Awesome icon without the `fa-solid` prefix
- * @param {string} title
- * @param {() => void} onClick
+ * Creates a horizontal divider between groups of sidebar actions.
  * @returns {HTMLElement}
  */
-function createActionButton(icon, title, onClick) {
+function createActionDivider() {
+    const divider = document.createElement('div');
+    divider.className = 'st-cq-actions-divider';
+    divider.setAttribute('role', 'separator');
+    return divider;
+}
+
+/**
+ * Creates one native-looking sidebar button: an icon with a label, spanning the
+ * full width of the column.
+ * @param {string} icon Font Awesome icon without the `fa-solid` prefix
+ * @param {string} label
+ * @param {() => void} onClick
+ * @param {{ className?: string }} [options]
+ * @returns {HTMLElement}
+ */
+function createActionButton(icon, label, onClick, { className = '' } = {}) {
     const button = document.createElement('div');
-    button.className = `menu_button st-cq-action fa-solid ${icon}`;
-    button.title = title;
-    button.setAttribute('aria-label', title);
+    button.className = `menu_button st-cq-action ${className}`.trim();
+    button.title = label;
+    button.setAttribute('aria-label', label);
+    button.setAttribute('role', 'button');
+    button.tabIndex = 0;
+
+    const iconElement = document.createElement('i');
+    iconElement.className = `fa-solid ${icon}`;
+    const text = document.createElement('span');
+    text.className = 'st-cq-action-label';
+    text.textContent = label;
+    button.append(iconElement, text);
+
     button.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
         onClick();
+    });
+    button.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            event.stopPropagation();
+            onClick();
+        }
     });
     return button;
 }
@@ -249,8 +304,11 @@ function updateSidebar(preview) {
     setActionTitle(sidebar.favorite, favorite ? 'Remove from favorites' : 'Add to favorites');
 
     const mediaAllowed = isPreviewMediaAllowed(character, context);
-    sidebar.media.classList.toggle('fa-link', mediaAllowed);
-    sidebar.media.classList.toggle('fa-link-slash', !mediaAllowed);
+    const mediaIcon = sidebar.media.querySelector('i');
+    if (mediaIcon) {
+        mediaIcon.classList.toggle('fa-link', mediaAllowed);
+        mediaIcon.classList.toggle('fa-link-slash', !mediaAllowed);
+    }
 
     if (settings.alwaysShowExternalMedia) {
         setActionTitle(sidebar.media, 'External media (previews always show it)');
@@ -271,6 +329,17 @@ function updateSidebar(preview) {
         sidebar.world.classList.toggle('world_set', Boolean(worldName));
         setActionTitle(sidebar.world, worldName ? `World Info: ${worldName}` : 'World Info');
     }
+
+    const chatsOpen = Boolean(preview.chats);
+    sidebar.chats.classList.toggle('st-cq-action-active', chatsOpen);
+    sidebar.chats.setAttribute('aria-pressed', String(chatsOpen));
+    setActionTitle(sidebar.chats, chatsOpen ? 'Back to character details' : 'Chats');
+
+    const editing = Boolean(preview.edit);
+    sidebar.edit.classList.toggle('st-cq-action-active', editing);
+    sidebar.edit.setAttribute('aria-pressed', String(editing));
+    sidebar.edit.querySelector('.st-cq-action-label').textContent = editing ? 'Editing' : 'Edit';
+    setActionTitle(sidebar.edit, editing ? 'Stop editing' : 'Edit character');
 }
 
 /**

@@ -8,7 +8,8 @@ import { getContext, setActiveCharacter, setActiveGroup } from './st.js';
 import { log, settings } from './settings.js';
 import { previewState } from './state.js';
 import { createPreviewContent, renderSections, updateSidebar } from './popup/view.js';
-import { enterEditMode, exitEditMode, guardPreviewClose, savePreviewEdits } from './popup/editor.js';
+import { refreshChatsView } from './popup/chats.js';
+import { exitEditMode, guardPreviewClose, savePreviewEdits } from './popup/editor.js';
 
 /**
  * Controls inside a character card that keep their own click behavior.
@@ -173,23 +174,20 @@ function createPopup(character, context) {
     popup.dlg.classList.add('st-cq-popup');
     popup.dlg.setAttribute('aria-label', `Character details: ${character.name ?? 'character'}`);
 
-    // Edit / Save / Cancel are plain footer buttons: they act in place and must
-    // not close the popup, so they are not registered as popup result controls.
-    const editButton = createFooterButton('Edit', 'fa-pen', () => enterEditMode(previewState.active));
-    editButton.classList.add('st-cq-edit-button');
+    // Save / Cancel are plain footer buttons: they act in place and must not
+    // close the popup, so they are not registered as popup result controls.
+    // Entering the editor itself happens through the sidebar Edit button.
     const saveButton = createFooterButton('Save', 'fa-floppy-disk', () => savePreviewEdits(preview));
     saveButton.classList.add('st-cq-save-button');
     const cancelButton = createFooterButton('Cancel', 'fa-xmark', () => exitEditMode(preview));
     cancelButton.classList.add('st-cq-cancel-button');
 
     preview.controls = {
-        edit: editButton,
         chat: popup.buttonControls.querySelector('.st-cq-chat-button'),
         close: popup.buttonControls.querySelector('.st-cq-close-button'),
         save: saveButton,
         cancel: cancelButton,
     };
-    preview.controls.chat.before(editButton);
     popup.buttonControls.append(saveButton, cancelButton);
     setEditControlsVisible(preview, false);
 
@@ -197,13 +195,24 @@ function createPopup(character, context) {
 
     preview.popup = popup;
 
-    // Helpers for the editor and the sidebar actions, so those modules can
-    // refresh the view without importing it (and without a module cycle).
+    // Helpers for the editor, the chat list and the sidebar actions, so those
+    // modules can refresh the view without importing it (and without a cycle).
     preview.refresh = () => {
-        renderSections(preview);
+        if (preview.chats) {
+            refreshChatsView(preview);
+        } else {
+            renderSections(preview);
+        }
         updateSidebar(preview);
     };
-    preview.setEditing = (editing) => setEditControlsVisible(preview, editing);
+    preview.setEditing = (editing) => {
+        setEditControlsVisible(preview, editing);
+        updateSidebar(preview);
+    };
+    preview.setChatsOpen = (open) => {
+        preview.root.classList.toggle('st-cq-chats-open', open);
+        updateSidebar(preview);
+    };
 
     previewState.active = preview;
     updateSidebar(preview);
@@ -257,7 +266,6 @@ function setEditControlsVisible(preview, editing) {
         return;
     }
 
-    controls.edit.style.display = editing ? 'none' : '';
     controls.chat.style.display = editing ? 'none' : '';
     controls.close.style.display = editing ? 'none' : '';
     controls.save.style.display = editing ? '' : 'none';

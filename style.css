@@ -66,22 +66,134 @@
     object-fit: cover;
 }
 
-/* Action buttons, mirroring the icon buttons of the character editor toolbar */
+/* Action buttons, mirroring the toolbar of the character editor. The column is
+ * a single stack, so every button spans the sidebar width. */
 .st-cq-actions {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    display: flex;
+    flex-direction: column;
     gap: 6px;
 }
 
 .st-cq-action.menu_button {
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
+    gap: 0.55em;
     width: 100%;
     height: 2.4rem;
     margin: 0;
-    padding: 0;
+    padding: 0 0.6em;
     font-size: 1rem;
+    text-align: start;
+}
+
+.st-cq-action-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.st-cq-actions-divider {
+    flex: 0 0 auto;
+    height: 1px;
+    margin: 2px 0;
+    background-color: var(--SmartThemeBorderColor);
+}
+
+.st-cq-action.st-cq-action-active {
+    background-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 33%, var(--SmartThemeBlurTintColor) 66%);
+}
+
+/* Chat list view, opened from the Chats sidebar button */
+.st-cq-chats {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.st-cq-chats-head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.st-cq-chats-title {
+    font-weight: bold;
+    font-size: 1.05em;
+}
+
+.st-cq-chats-count {
+    font-size: 0.85em;
+    opacity: 0.7;
+}
+
+.st-cq-chats-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.st-cq-chat-row {
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 5px;
+    padding: 8px 10px;
+    cursor: pointer;
+    transition: background-color var(--animation-duration-2x, 0.3s) ease-in-out;
+}
+
+.st-cq-chat-row:hover,
+.st-cq-chat-row:focus-visible {
+    background-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, transparent);
+}
+
+.st-cq-chat-active {
+    border-color: var(--SmartThemeQuoteColor);
+}
+
+.st-cq-chat-top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.st-cq-chat-name {
+    font-weight: bold;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.st-cq-chat-date {
+    flex: 0 0 auto;
+    font-size: 0.85em;
+    opacity: 0.7;
+}
+
+.st-cq-chat-meta {
+    font-size: 0.85em;
+    opacity: 0.7;
+}
+
+.st-cq-chat-preview {
+    display: -webkit-box;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    font-size: 0.9em;
+    opacity: 0.85;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+}
+
+.st-cq-chats-note {
+    padding: 16px 0;
+    text-align: center;
+    opacity: 0.7;
+}
+
+.st-cq-chats-retry {
+    margin-top: 8px;
 }
 
 /* Main column: header + sections */
@@ -302,15 +414,31 @@
     }
 
     .st-cq-actions {
-        display: flex;
         flex: 1 1 auto;
-        flex-wrap: wrap;
+        flex-direction: row;
+        flex-wrap: nowrap;
         gap: 6px;
+        overflow-x: auto;
+        padding-bottom: 2px;
+        scrollbar-width: thin;
     }
 
     .st-cq-action.menu_button {
-        width: 2.4rem;
         flex: 0 0 auto;
+        justify-content: center;
+        width: 2.4rem;
+        padding: 0;
+    }
+
+    .st-cq-action-label {
+        display: none;
+    }
+
+    .st-cq-actions-divider {
+        flex: 0 0 auto;
+        width: 1px;
+        height: auto;
+        margin: 2px;
     }
 
     .st-cq-main {
@@ -410,9 +538,15 @@
 }
 
 /* The read-only sidebar actions are not usable while editing. */
-.st-cq-editing .st-cq-actions {
+/* While editing, only the Edit button stays active (it doubles as "stop
+ * editing"); every other sidebar action is disabled. */
+.st-cq-editing .st-cq-action:not(.st-cq-action-edit) {
     opacity: 0.55;
     pointer-events: none;
+}
+
+.st-cq-editing .st-cq-actions-divider {
+    opacity: 0.55;
 }
 
 /* Expand-editor icon next to a field, mirroring the native `.editor_maximize`

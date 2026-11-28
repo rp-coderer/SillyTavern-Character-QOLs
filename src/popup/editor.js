@@ -7,6 +7,7 @@
 import { createNavButton, createSection } from '../sections.js';
 import { formatDepthMeta, getCharacterData, resolvePreviewCharacter } from '../character.js';
 import { getContext } from '../st.js';
+import { closeChatsView } from './chats.js';
 
 /**
  * Fields the minimal editor can change. Each entry maps a preview section to
@@ -111,6 +112,10 @@ const EDIT_SECTION_LAYOUT = [
 function enterEditMode(preview) {
     if (!preview || preview.edit) {
         return;
+    }
+
+    if (preview.chats) {
+        closeChatsView(preview);
     }
 
     const character = resolvePreviewCharacter(preview);
@@ -403,6 +408,39 @@ async function savePreviewEdits(preview) {
 }
 
 /**
+ * Asks for confirmation before dropping unsaved edits.
+ * @param {object} preview
+ * @param {string} question
+ * @returns {Promise<boolean>}
+ */
+async function confirmDiscardChanges(preview, question) {
+    const { Popup, POPUP_TYPE, POPUP_RESULT } = preview.context;
+    const confirm = new Popup(question, POPUP_TYPE.CONFIRM, '', {
+        okButton: 'Discard',
+        cancelButton: 'Keep editing',
+        animation: 'fast',
+    });
+
+    return await confirm.show() === POPUP_RESULT.AFFIRMATIVE;
+}
+
+/**
+ * Leaves the editor through the sidebar Edit button: unsaved drafts are only
+ * dropped after the user confirms.
+ * @param {object|null} preview
+ */
+async function requestExitEditMode(preview) {
+    if (!preview?.edit || preview.edit.saving) {
+        return;
+    }
+    if (preview.edit.dirty && !await confirmDiscardChanges(preview, '<p>You have unsaved changes. Discard them?</p>')) {
+        return;
+    }
+
+    exitEditMode(preview);
+}
+
+/**
  * Confirms discarding unsaved edits when the popup is closed by Escape or by
  * a closing action.
  * @param {object} preview
@@ -420,15 +458,7 @@ async function guardPreviewClose(preview) {
         return true;
     }
 
-    const { Popup, POPUP_TYPE, POPUP_RESULT } = preview.context;
-    const confirm = new Popup(
-        '<p>You have unsaved changes. Discard them and close the preview?</p>',
-        POPUP_TYPE.CONFIRM,
-        '',
-        { okButton: 'Discard', cancelButton: 'Keep editing', animation: 'fast' },
-    );
-
-    return await confirm.show() === POPUP_RESULT.AFFIRMATIVE;
+    return confirmDiscardChanges(preview, '<p>You have unsaved changes. Discard them and close the preview?</p>');
 }
 
 /**
@@ -495,4 +525,4 @@ async function openExpandedEditor(textarea, title) {
     textarea.focus();
 }
 
-export { enterEditMode, exitEditMode, savePreviewEdits, guardPreviewClose };
+export { enterEditMode, exitEditMode, requestExitEditMode, savePreviewEdits, guardPreviewClose };

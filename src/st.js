@@ -6,7 +6,7 @@
  */
 
 import { getContext, renderExtensionTemplateAsync } from '../../../../extensions.js';
-import { converter, duplicateCharacter, setActiveCharacter, setActiveGroup } from '../../../../../script.js';
+import { converter, duplicateCharacter, openCharacterChat, setActiveCharacter, setActiveGroup } from '../../../../../script.js';
 import { decodeStyleTags, encodeStyleTags } from '../../../../chats.js';
 import { favsToHotswap } from '../../../../RossAscends-mods.js';
 import { openWorldInfoEditor, world_names } from '../../../../world-info.js';
@@ -16,6 +16,7 @@ export {
     renderExtensionTemplateAsync,
     converter,
     duplicateCharacter,
+    openCharacterChat,
     setActiveCharacter,
     setActiveGroup,
     decodeStyleTags,

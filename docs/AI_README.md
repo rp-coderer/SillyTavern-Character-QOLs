@@ -21,13 +21,20 @@ popup, markdown converter and theme, so it looks and feels native.
 - Two-column layout on desktop: a sidebar with the avatar and the action buttons, and the
   character text next to it. On narrow screens it collapses into a single scrolling column.
 - Sidebar actions mirrored from the character editor toolbar:
+  - **💬 Chats** — lists every chat stored for the character, newest first, with the open
+    chat highlighted; clicking a chat closes the preview and opens that chat (no renaming
+    or deleting there, the chat itself is the place for that).
+  - **✏️ Edit** — opens the minimal editor (below); while editing it is highlighted and
+    clicking it again leaves the editor (asking first when there are unsaved changes).
   - **⭐ Favorite** — toggles the favorite state through SillyTavern's character merge
     endpoint, and refreshes the hot-swap row.
-  - **🖼️ Ext. Media** — the same three-state external media preference as the character
-    editor (global / always forbidden / always allowed), applied to this character.
+  - **⧉ Duplicate** — SillyTavern's own duplicate flow, including its confirmation dialog.
   - **🌐 World Info** — opens the linked lorebook in the World Info panel (shown only when
     the character has a linked lorebook).
-  - **⧉ Duplicate** — SillyTavern's own duplicate flow, including its confirmation dialog.
+  - **🖼️ Ext. Media** — the same three-state external media preference as the character
+    editor (global / always forbidden / always allowed), applied to this character.
+- The action column is a single stack of full-width buttons on desktop and a single
+  scrollable row of icons on narrow screens.
 - Shows description, first message and alternate greetings (with a pager), scenario,
   personality, example dialogue, main prompt, post-history instructions, character's note
   and creator's notes — empty fields are omitted.
@@ -43,9 +50,9 @@ popup, markdown converter and theme, so it looks and feels native.
   setting of whatever chat happens to be open. Blocked external media is replaced with a
   short note instead of disappearing silently. A setting can force all external media to
   be shown in previews regardless of the character setting.
-- **Minimal in-popup editor.** The popup's **Edit** button turns the same view into a
-  text editor for the card, so a character can be tweaked without leaving the current chat
-  or loading that character's chat first. It edits creator's notes, description, first
+- **Minimal in-popup editor.** The sidebar's **Edit** button turns the view into a text
+  editor for the card, so a character can be tweaked without leaving the current chat or
+  loading that character's chat first. It edits creator's notes, description, first
   message and alternate greetings, scenario, personality, example dialogue, main prompt,
   post-history instructions and character's note. Only the changed fields are written, via
   SillyTavern's character merge endpoint, so the chats are never touched. Empty fields are
@@ -79,12 +86,14 @@ ES modules (the manifest still points at `index.js`).
 | `src/popup.js` | Click claim, popup shell, footer buttons and the Chat action. |
 | `src/popup/view.js` | Read-only preview content: header, sidebar, tags and sections. |
 | `src/popup/editor.js` | Minimal in-popup editor and the expanded editor. |
+| `src/popup/chats.js` | Chat list view of the preview and opening a chat from it. |
 | `src/popup/actions.js` | Sidebar actions: favorite, external media, World Info and duplicate. |
 | `style.css` | All styles, still loaded from `manifest.json`. |
 
-The preview object created in `src/popup.js` also carries `preview.refresh()` and
-`preview.setEditing()`, so the editor and the sidebar actions can update the view without
-importing it (which would create a module cycle).
+The preview object created in `src/popup.js` also carries `preview.refresh()`,
+`preview.setEditing()` and `preview.setChatsOpen()`, so the editor, the chat list and the
+sidebar actions can update the view without importing it (which would create a module
+cycle).
 
 ## Installation
 
@@ -103,13 +112,17 @@ importing it (which would create a module cycle).
   native character editor opens instead.
 - **Chat** → continues that character's most recent chat (or creates one), exactly like a
   normal card click used to.
-- **Edit** → edits the card text inside the popup (see above). **Save** writes, **Cancel**
-  discards. The maximize icon next to a field (or next to the greeting pager) opens a
-  full-screen editor for long text.
+- **Chats** (sidebar) → replaces the character text with the list of that character's
+  chats, newest first; the open chat is highlighted. Clicking a chat opens it and closes
+  the preview. Clicking **Chats** again returns to the character details.
+- **Edit** (sidebar) → edits the card text inside the popup (see above). **Save** writes,
+  **Cancel** discards. The maximize icon next to a field (or next to the greeting pager)
+  opens a full-screen editor for long text. While editing, **Edit** is highlighted and
+  clicking it again leaves the editor (with a discard confirmation when needed).
 - **Close** / `Esc` → back to the character list, unchanged. If the editor has unsaved
   changes, a confirmation asks whether to discard them.
-- Sidebar buttons act on the previewed character: Favorite, Ext. Media, World Info and
-  Duplicate. They are disabled while editing.
+- Sidebar buttons act on the previewed character: Favorite, Duplicate, World Info and
+  Ext. Media. They are disabled while editing.
 - Saving from the popup leaves the open chat exactly as it is: the character's chat opener
   is not regenerated and no `CHARACTER_EDITED` event is emitted.
 

@@ -613,3 +613,298 @@
         min-height: 7em;
     }
 }
+
+/* ==========================================================================
+ * Overhauled welcome screen chat list (inside .welcomePanel)
+ * ========================================================================== */
+
+.st-cq-welcome {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+}
+
+.st-cq-welcome-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.st-cq-welcome-modes {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 4px;
+}
+
+.st-cq-welcome-button.menu_button {
+    margin: 0;
+    padding: 0 0.55em;
+    height: 2.2rem;
+    font-size: 0.9em;
+}
+
+.st-cq-welcome-mode-active {
+    background-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 33%, var(--SmartThemeBlurTintColor) 66%);
+}
+
+.st-cq-welcome-search-wrap {
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.st-cq-welcome-search.text_pole {
+    width: 100%;
+    margin: 0;
+}
+
+.st-cq-welcome-refresh {
+    flex: 0 0 auto;
+}
+
+.st-cq-welcome-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.st-cq-welcome-note {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 0;
+    text-align: center;
+    opacity: 0.7;
+}
+
+.st-cq-welcome-section {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.st-cq-welcome-section-title {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 4px 2px;
+    border-bottom: 1px solid var(--SmartThemeBorderColor);
+    font-weight: bold;
+}
+
+.st-cq-welcome-section-count {
+    font-weight: normal;
+    opacity: 0.6;
+}
+
+.st-cq-welcome-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.st-cq-welcome-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 6px 8px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color var(--animation-duration-2x, 0.3s) ease-in-out;
+}
+
+.st-cq-welcome-row:hover,
+.st-cq-welcome-row:focus-visible {
+    background-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
+}
+
+.st-cq-welcome-avatars {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+}
+
+/* Character in front, persona behind and slightly to the right. */
+.st-cq-welcome-char {
+    position: relative;
+    z-index: 2;
+    flex: 0 0 auto;
+    width: 2.5rem;
+    height: 2.5rem;
+    overflow: hidden;
+    border-radius: var(--avatar-base-border-radius-round);
+}
+
+.st-cq-welcome-char img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.st-cq-welcome-persona {
+    position: relative;
+    z-index: 1;
+    flex: 0 0 auto;
+    width: 2.5rem;
+    height: 2.5rem;
+    margin-left: -0.9rem;
+    overflow: hidden;
+    border: 2px solid var(--SmartThemeBlurTintColor);
+    border-radius: var(--avatar-base-border-radius-round);
+}
+
+.st-cq-welcome-persona img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.st-cq-welcome-persona-inferred {
+    opacity: 0.55;
+}
+
+.st-cq-welcome-persona-missing {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.5;
+}
+
+.st-cq-welcome-main {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.st-cq-welcome-top {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.st-cq-welcome-name {
+    overflow: hidden;
+    font-weight: bold;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.st-cq-welcome-date {
+    flex: 0 0 auto;
+    margin-left: auto;
+    font-size: 0.85em;
+    opacity: 0.7;
+}
+
+.st-cq-welcome-meta {
+    font-size: 0.85em;
+    opacity: 0.7;
+}
+
+.st-cq-welcome-preview {
+    display: -webkit-box;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    font-size: 0.9em;
+    opacity: 0.85;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+}
+
+.st-cq-welcome-pin-mark {
+    color: var(--golden);
+    font-size: 0.85em;
+}
+
+.st-cq-welcome-actions {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 4px;
+}
+
+.st-cq-welcome-action {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.9rem;
+    height: 1.9rem;
+    border-radius: 5px;
+    opacity: 0.6;
+    cursor: pointer;
+}
+
+.st-cq-welcome-action:hover,
+.st-cq-welcome-action:focus-visible {
+    background-color: var(--white30a);
+    opacity: 1;
+}
+
+.st-cq-welcome-action-active {
+    color: var(--golden);
+    opacity: 1;
+}
+
+.st-cq-welcome-group-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 4px;
+    border-bottom: 1px solid var(--SmartThemeBorderColor);
+    cursor: pointer;
+}
+
+.st-cq-welcome-chevron {
+    width: 1rem;
+    opacity: 0.7;
+}
+
+.st-cq-welcome-group-avatar {
+    flex: 0 0 auto;
+    width: 2rem;
+    height: 2rem;
+}
+
+.st-cq-welcome-group-name {
+    overflow: hidden;
+    font-weight: bold;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.st-cq-welcome-group-count {
+    margin-left: auto;
+    opacity: 0.7;
+}
+
+.st-cq-welcome-show-more {
+    align-self: center;
+    margin: 2px 0;
+}
+
+@media (max-width: 700px) {
+    .st-cq-welcome-button-label {
+        display: none;
+    }
+
+    .st-cq-welcome-button.menu_button {
+        width: 2.2rem;
+        padding: 0;
+        justify-content: center;
+    }
+
+    .st-cq-welcome-char,
+    .st-cq-welcome-persona {
+        width: 2.1rem;
+        height: 2.1rem;
+    }
+
+    .st-cq-welcome-action {
+        width: 1.7rem;
+        height: 1.7rem;
+    }
+}

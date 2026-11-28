@@ -69,6 +69,19 @@ popup, markdown converter and theme, so it looks and feels native.
   instead of being a fixed-height box that has to be resized. The last used tab is
   remembered per account. Spoiler-free mode is respected: when it hides both text blocks,
   the tab strip hides too. Can be turned off in the settings.
+- **Overhauled welcome chat list.** The welcome screen's "Recent Chats" is replaced with a
+  searchable list in two modes, switchable right there:
+  - **Recent** — date sections (Today, Yesterday, This week, This month, Long time ago),
+    newest first. Each section shows a few chats and grows with **Show next N chats**.
+  - **Characters** — one collapsible group per character/group, ordered by their newest
+    chat; groups can start collapsed (setting).
+  Pinned chats sit on top in both modes, with a pin marker on the row. Every row shows the
+  character and persona avatars (persona dimmed when the chat did not record one), name,
+  date, message count, file size and a two-line preview, plus inline pin / rename / delete
+  buttons. Search filters the loaded chats client-side with a short debounce. Ordering is
+  by **last message date**, not by file mtime — the native list ranks chats by file
+  modification time, which puts chats you merely opened or restored from a backup first.
+  Can be turned off in the settings to get the native list back.
 
 ## Project layout
 
@@ -90,6 +103,11 @@ ES modules (the manifest still points at `index.js`).
 | `src/popup/editor.js` | Minimal in-popup editor and the expanded editor. |
 | `src/popup/chats.js` | Chat list view of the preview and opening a chat from it. |
 | `src/popup/actions.js` | Sidebar actions: favorite, external media, World Info and duplicate. |
+| `src/chat-utils.js` | Shared chat timestamps, date formatting, date buckets and previews. |
+| `src/persona.js` | Resolves the persona a chat was locked to and renders its avatar. |
+| `src/welcome/index.js` | Mounts the welcome list, watches for panel re-renders, wires actions. |
+| `src/welcome/model.js` | Loads all chats, normalizes them, and pins/renames/deletes/opens them. |
+| `src/welcome/view.js` | Renders the welcome list: modes, search, sections, rows, actions. |
 | `style.css` | All styles, still loaded from `manifest.json`. |
 
 The preview object created in `src/popup.js` also carries `preview.refresh()`,
@@ -107,6 +125,8 @@ cycle).
    - "Always show external media in previews" (ignores each character's Ext. Media setting
      in previews only; chats are unaffected)
    - "Tabbed Description / First message editor" (on by default)
+   - "Overhauled welcome chat list" (on by default)
+   - "Collapse character groups by default" (welcome list, Characters mode)
 
 ## Usage
 
@@ -138,6 +158,10 @@ cycle).
   into the rest of the interface.
 - Lazy-loaded character lists are handled: shallow characters are fetched before the
   preview is shown.
+- The welcome list is built by replacing the DOM inside the native panel, not through an
+  official API. An update that renames those elements could break it; the setting turns it
+  off again. It reads every chat file once (cached for a minute, capped at 3000 chats) to
+  rank chats by their last message instead of by file mtime.
 
 ## Roadmap
 

@@ -7,9 +7,9 @@
  */
 
 import { resolvePreviewCharacter } from '../character.js';
-import { openCharacterChat, setActiveCharacter, setActiveGroup, user_avatar } from '../st.js';
-
-const CHAT_FILE_EXTENSION = '.jsonl';
+import { chatTimestamp, formatChatDate, getPreviewText } from '../chat-utils.js';
+import { createPersonaAvatarElement, resolveChatPersona } from '../persona.js';
+import { openCharacterChat, setActiveCharacter, setActiveGroup } from '../st.js';
 
 /**
  * Shows the chat list instead of the character sections.
@@ -192,11 +192,8 @@ function renderChatsView(preview) {
 function createChatRow(preview, chat) {
     const character = resolvePreviewCharacter(preview);
     const rawFileName = String(chat.file_name ?? '');
-    const fileName = rawFileName.endsWith(CHAT_FILE_EXTENSION)
-        ? rawFileName
-        : `${rawFileName}${CHAT_FILE_EXTENSION}`;
-    const displayName = rawFileName.replace(/\.jsonl$/, '');
-    const isActive = character.chat === fileName;
+    const chatName = rawFileName.replace(/\.jsonl$/, '');
+    const isActive = character.chat === chatName;
 
     const row = document.createElement('div');
     row.className = 'st-cq-chat-row';
@@ -205,9 +202,13 @@ function createChatRow(preview, chat) {
     }
     row.tabIndex = 0;
     row.setAttribute('role', 'button');
-    row.setAttribute('aria-label', `Open chat: ${displayName}`);
+    row.setAttribute('aria-label', `Open chat: ${chatName}`);
 
-    row.append(createPersonaAvatar(preview, chat));
+    row.append(createPersonaAvatarElement(preview.context, resolveChatPersona(preview.context, chat.chat_metadata), {
+        className: 'st-cq-chat-persona',
+        inferredClassName: 'st-cq-chat-persona-inferred',
+        missingClassName: 'st-cq-chat-persona-missing',
+    }));
 
     const main = document.createElement('div');
     main.className = 'st-cq-chat-main';
@@ -217,7 +218,7 @@ function createChatRow(preview, chat) {
 
     const name = document.createElement('span');
     name.className = 'st-cq-chat-name';
-    name.textContent = displayName;
+    name.textContent = chatName;
     top.append(name);
 
     const date = document.createElement('small');
@@ -256,7 +257,7 @@ function createChatRow(preview, chat) {
     row.append(main);
 
     const open = () => {
-        void openChat(preview, fileName);
+        void openChat(preview, chatName);
     };
     row.addEventListener('click', (event) => {
         event.preventDefault();
@@ -274,101 +275,12 @@ function createChatRow(preview, chat) {
 }
 
 /**
- * Builds the persona avatar shown at the left of a chat row.
- * Locked persona first, then the default persona, then the current one.
- * @param {object} preview
- * @param {{ chat_metadata?: { persona?: string } }} chat
- * @returns {HTMLElement}
- */
-function createPersonaAvatar(preview, chat) {
-    const context = preview.context;
-    const powerUser = context.powerUserSettings ?? {};
-    const storedAvatar = typeof chat.chat_metadata?.persona === 'string' ? chat.chat_metadata.persona : '';
-
-    let avatar = '';
-    let source = 'none';
-    if (storedAvatar) {
-        avatar = storedAvatar;
-        source = 'locked';
-    } else if (powerUser.default_persona) {
-        avatar = powerUser.default_persona;
-        source = 'default';
-    } else if (user_avatar) {
-        avatar = user_avatar;
-        source = 'current';
-    }
-
-    const wrapper = document.createElement('div');
-    wrapper.className = 'st-cq-chat-persona';
-
-    const name = avatar ? String(powerUser.personas?.[avatar] ?? '') : '';
-    const label = name || avatar;
-
-    if (avatar) {
-        wrapper.classList.add('avatar');
-        const image = document.createElement('img');
-        image.src = context.getThumbnailUrl('persona', avatar);
-        image.alt = label ? `Persona: ${label}` : 'Persona';
-        image.addEventListener('error', () => {
-            wrapper.replaceChildren(createPersonaPlaceholder());
-        }, { once: true });
-        wrapper.append(image);
-
-        if (source !== 'locked') {
-            wrapper.classList.add('st-cq-chat-persona-inferred');
-        }
-    } else {
-        wrapper.classList.add('st-cq-chat-persona-missing');
-        wrapper.append(createPersonaPlaceholder());
-    }
-
-    const suffix = source === 'locked'
-        ? ''
-        : source === 'default'
-            ? ' (default persona)'
-            : source === 'current'
-                ? ' (current persona, not recorded in this chat)'
-                : '';
-    wrapper.title = label ? `Persona: ${label}${suffix}` : 'No persona recorded for this chat';
-
-    return wrapper;
-}
-
-/**
- * Placeholder icon for chats whose persona cannot be resolved.
- * @returns {HTMLElement}
- */
-function createPersonaPlaceholder() {
-    const icon = document.createElement('i');
-    icon.className = 'fa-solid fa-user';
-    return icon;
-}
-
-/**
- * Turns the raw last message text into a short one-paragraph preview.
- * @param {string|undefined} message
- * @returns {string}
- */
-function getPreviewText(message) {
-    if (typeof message !== 'string') {
-        return '';
-    }
-
-    const text = message.replace(/\s+/g, ' ').trim();
-    if (!text || text === '[The message is empty]' || text === '[The chat is empty]') {
-        return '';
-    }
-
-    return text.length > 220 ? `${text.slice(0, 220)}…` : text;
-}
-
-/**
  * Closes the preview and opens the selected chat for the previewed character.
  * Mirrors what SillyTavern's welcome screen does for a recent chat.
  * @param {object} preview
- * @param {string} fileName Chat file name including the extension
+ * @param {string} chatName Chat name without the `.jsonl` extension
  */
-async function openChat(preview, fileName) {
+async function openChat(preview, chatName) {
     if (preview.openingChat) {
         return;
     }
@@ -390,7 +302,7 @@ async function openChat(preview, fileName) {
         }
 
         const isActiveCharacter = !context.groupId && String(context.characterId) === String(id);
-        if (isActiveCharacter && context.chatId === fileName) {
+        if (isActiveCharacter && context.chatId === chatName) {
             const sendTextarea = document.getElementById('send_textarea');
             if (sendTextarea instanceof HTMLElement) {
                 sendTextarea.focus();
@@ -405,43 +317,13 @@ async function openChat(preview, fileName) {
         setActiveCharacter(character.avatar);
         setActiveGroup(null);
         context.saveSettingsDebounced();
-        await openCharacterChat(fileName);
+        await openCharacterChat(chatName);
     } catch (error) {
         console.error('[Character QOLs] Failed to open the selected chat.', error);
         toastr.error('Could not open the selected chat. Check the console for details.');
     } finally {
         preview.openingChat = false;
     }
-}
-
-/**
- * Formats the last message timestamp of a chat for the list.
- * @param {string|number|Date|undefined} value
- * @returns {string}
- */
-function formatChatDate(value) {
-    const date = value instanceof Date ? value : new Date(value ?? '');
-    if (Number.isNaN(date.getTime())) {
-        return '';
-    }
-
-    const now = new Date();
-    if (date.toDateString() === now.toDateString()) {
-        return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-    }
-    if (date.getFullYear() === now.getFullYear()) {
-        return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-    }
-    return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-}
-
-/**
- * @param {{ last_mes?: string|number }} chat
- * @returns {number}
- */
-function chatTimestamp(chat) {
-    const time = new Date(chat.last_mes ?? '').getTime();
-    return Number.isNaN(time) ? 0 : time;
 }
 
 export { openChatsView, closeChatsView, refreshChatsView };

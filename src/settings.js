@@ -13,13 +13,21 @@ const DEFAULT_SETTINGS = Object.freeze({
     enabled: true,
     alwaysShowExternalMedia: false,
     tabbedEditor: true,
+    overhaulWelcome: true,
+    welcomeGroupsCollapsed: true,
 });
 
 /**
  * The live settings object. Initialized as a copy of the defaults and swapped
  * for the object stored in `extensionSettings` once the app is ready, so every
  * mutation is saved by SillyTavern's own settings persistence.
- * @type {{ enabled: boolean, alwaysShowExternalMedia: boolean, tabbedEditor: boolean }}
+ * @type {{
+ *   enabled: boolean,
+ *   alwaysShowExternalMedia: boolean,
+ *   tabbedEditor: boolean,
+ *   overhaulWelcome: boolean,
+ *   welcomeGroupsCollapsed: boolean,
+ * }}
  */
 export let settings = { ...DEFAULT_SETTINGS };
 
@@ -52,8 +60,10 @@ function initSettings(context) {
  *   closePreview?: () => void,
  *   refreshPreview?: () => void,
  *   applyEditorTabs?: () => void,
+ *   applyWelcomeOverhaul?: () => void,
+ *   refreshWelcomeList?: () => void,
  * }} handlers Callbacks supplied by the extension entry point, so this module
- *   does not have to know about the popup or the editor tabs.
+ *   does not have to know about the popup, the editor tabs or the welcome list.
  */
 async function renderSettingsPanel(context, handlers = {}) {
     const container = document.getElementById('extensions_settings2')
@@ -101,6 +111,26 @@ async function renderSettingsPanel(context, handlers = {}) {
                 settings.tabbedEditor = tabbedEditor.checked;
                 context.saveSettingsDebounced();
                 handlers.applyEditorTabs?.();
+            });
+        }
+
+        const welcomeOverhaul = wrapper.querySelector('#st_cq_welcome_overhaul');
+        if (welcomeOverhaul instanceof HTMLInputElement) {
+            welcomeOverhaul.checked = settings.overhaulWelcome;
+            welcomeOverhaul.addEventListener('change', () => {
+                settings.overhaulWelcome = welcomeOverhaul.checked;
+                context.saveSettingsDebounced();
+                handlers.applyWelcomeOverhaul?.();
+            });
+        }
+
+        const welcomeGroups = wrapper.querySelector('#st_cq_welcome_groups_collapsed');
+        if (welcomeGroups instanceof HTMLInputElement) {
+            welcomeGroups.checked = settings.welcomeGroupsCollapsed;
+            welcomeGroups.addEventListener('change', () => {
+                settings.welcomeGroupsCollapsed = welcomeGroups.checked;
+                context.saveSettingsDebounced();
+                handlers.refreshWelcomeList?.();
             });
         }
     } catch (error) {

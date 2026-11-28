@@ -46,9 +46,10 @@
 
 import { getContext } from './src/st.js';
 import { applyEditorTabs, setupEditorTabs } from './src/tabs.js';
-import { log, initSettings, renderSettingsPanel } from './src/settings.js';
+import { log, initSettings, renderSettingsPanel, settings } from './src/settings.js';
 import { closePreview, onDocumentClick } from './src/popup.js';
 import { previewState } from './src/state.js';
+import { applyWelcomeOverhaul, refreshWelcomeOverhaul, setupWelcomeOverhaul } from './src/welcome/index.js';
 
 let initialized = false;
 
@@ -68,12 +69,18 @@ async function init() {
         closePreview,
         refreshPreview: () => previewState.active?.refresh?.(),
         applyEditorTabs,
+        applyWelcomeOverhaul: () => applyWelcomeOverhaul(context, settings.overhaulWelcome),
+        refreshWelcomeList: refreshWelcomeOverhaul,
     });
 
     // Capture phase: this runs before SillyTavern's delegated document handlers.
     document.addEventListener('click', onDocumentClick, true);
 
     setupEditorTabs(context);
+
+    if (settings.overhaulWelcome) {
+        setupWelcomeOverhaul(context);
+    }
 
     log('ready');
 }

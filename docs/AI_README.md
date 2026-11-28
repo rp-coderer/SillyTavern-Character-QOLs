@@ -23,7 +23,9 @@ popup, markdown converter and theme, so it looks and feels native.
 - Sidebar actions mirrored from the character editor toolbar:
   - **💬 Chats** — lists every chat stored for the character, newest first, with the open
     chat highlighted; clicking a chat closes the preview and opens that chat (no renaming
-    or deleting there, the chat itself is the place for that).
+    or deleting there, the chat itself is the place for that). Each row shows the user
+    persona the chat was locked to (`chat_metadata.persona`); when the chat did not record
+    one, the default (or current) persona is shown dimmed to mark it as inferred.
   - **✏️ Edit** — opens the minimal editor (below); while editing it is highlighted and
     clicking it again leaves the editor (asking first when there are unsaved changes).
   - **⭐ Favorite** — toggles the favorite state through SillyTavern's character merge

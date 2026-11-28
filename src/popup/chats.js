@@ -7,7 +7,7 @@
  */
 
 import { resolvePreviewCharacter } from '../character.js';
-import { openCharacterChat, setActiveCharacter, setActiveGroup } from '../st.js';
+import { openCharacterChat, setActiveCharacter, setActiveGroup, user_avatar } from '../st.js';
 
 const CHAT_FILE_EXTENSION = '.jsonl';
 
@@ -76,10 +76,13 @@ async function loadChats(preview) {
     renderChatsView(preview);
 
     try {
-        const response = await fetch('/api/chats/search', {
+        // The character-chats endpoint (rather than /api/chats/search) is used
+        // because it can also return each chat's metadata line, which is where
+        // the locked user persona is stored (`chat_metadata.persona`).
+        const response = await fetch('/api/characters/chats', {
             method: 'POST',
             headers: preview.context.getRequestHeaders(),
-            body: JSON.stringify({ query: '', avatar_url: character.avatar }),
+            body: JSON.stringify({ avatar_url: character.avatar, metadata: true }),
             cache: 'no-cache',
         });
 
@@ -92,6 +95,7 @@ async function loadChats(preview) {
             return;
         }
 
+        // `{ error: true }` means the character simply has no chats directory yet.
         state.items = Array.isArray(data)
             ? data.sort((a, b) => chatTimestamp(b) - chatTimestamp(a))
             : [];
@@ -179,34 +183,41 @@ function renderChatsView(preview) {
 }
 
 /**
- * Creates one clickable chat row.
+ * Creates one clickable chat row: persona avatar on the left, chat details on
+ * the right.
  * @param {object} preview
- * @param {{ file_name: string, file_size?: string, message_count?: number, last_mes?: string|number, preview_message?: string }} chat
+ * @param {{ file_name: string, file_size?: string, chat_items?: number, last_mes?: string|number, mes?: string, chat_metadata?: object }} chat
  * @returns {HTMLElement}
  */
 function createChatRow(preview, chat) {
     const character = resolvePreviewCharacter(preview);
-    const fileName = chat.file_name.endsWith(CHAT_FILE_EXTENSION)
-        ? chat.file_name
-        : `${chat.file_name}${CHAT_FILE_EXTENSION}`;
+    const rawFileName = String(chat.file_name ?? '');
+    const fileName = rawFileName.endsWith(CHAT_FILE_EXTENSION)
+        ? rawFileName
+        : `${rawFileName}${CHAT_FILE_EXTENSION}`;
+    const displayName = rawFileName.replace(/\.jsonl$/, '');
     const isActive = character.chat === fileName;
 
     const row = document.createElement('div');
     row.className = 'st-cq-chat-row';
     if (isActive) {
         row.classList.add('st-cq-chat-active');
-        row.title = 'Currently open';
     }
     row.tabIndex = 0;
     row.setAttribute('role', 'button');
-    row.setAttribute('aria-label', `Open chat: ${chat.file_name}`);
+    row.setAttribute('aria-label', `Open chat: ${displayName}`);
+
+    row.append(createPersonaAvatar(preview, chat));
+
+    const main = document.createElement('div');
+    main.className = 'st-cq-chat-main';
 
     const top = document.createElement('div');
     top.className = 'st-cq-chat-top';
 
     const name = document.createElement('span');
     name.className = 'st-cq-chat-name';
-    name.textContent = chat.file_name;
+    name.textContent = displayName;
     top.append(name);
 
     const date = document.createElement('small');
@@ -214,11 +225,11 @@ function createChatRow(preview, chat) {
     date.textContent = formatChatDate(chat.last_mes);
     top.append(date);
 
-    row.append(top);
+    main.append(top);
 
     const details = [];
-    if (typeof chat.message_count === 'number' && chat.message_count > 0) {
-        details.push(chat.message_count === 1 ? '1 message' : `${chat.message_count} messages`);
+    if (typeof chat.chat_items === 'number' && chat.chat_items > 0) {
+        details.push(chat.chat_items === 1 ? '1 message' : `${chat.chat_items} messages`);
     }
     if (chat.file_size) {
         details.push(chat.file_size);
@@ -231,17 +242,18 @@ function createChatRow(preview, chat) {
         const meta = document.createElement('div');
         meta.className = 'st-cq-chat-meta';
         meta.textContent = details.join(' · ');
-        row.append(meta);
+        main.append(meta);
     }
 
-    const previewText = typeof chat.preview_message === 'string' ? chat.preview_message.trim() : '';
-    const hasPreview = previewText && previewText !== '[The message is empty]';
-    if (hasPreview) {
+    const previewText = getPreviewText(chat.mes);
+    if (previewText) {
         const previewLine = document.createElement('div');
         previewLine.className = 'st-cq-chat-preview';
         previewLine.textContent = previewText;
-        row.append(previewLine);
+        main.append(previewLine);
     }
+
+    row.append(main);
 
     const open = () => {
         void openChat(preview, fileName);
@@ -259,6 +271,95 @@ function createChatRow(preview, chat) {
     });
 
     return row;
+}
+
+/**
+ * Builds the persona avatar shown at the left of a chat row.
+ * Locked persona first, then the default persona, then the current one.
+ * @param {object} preview
+ * @param {{ chat_metadata?: { persona?: string } }} chat
+ * @returns {HTMLElement}
+ */
+function createPersonaAvatar(preview, chat) {
+    const context = preview.context;
+    const powerUser = context.powerUserSettings ?? {};
+    const storedAvatar = typeof chat.chat_metadata?.persona === 'string' ? chat.chat_metadata.persona : '';
+
+    let avatar = '';
+    let source = 'none';
+    if (storedAvatar) {
+        avatar = storedAvatar;
+        source = 'locked';
+    } else if (powerUser.default_persona) {
+        avatar = powerUser.default_persona;
+        source = 'default';
+    } else if (user_avatar) {
+        avatar = user_avatar;
+        source = 'current';
+    }
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'st-cq-chat-persona';
+
+    const name = avatar ? String(powerUser.personas?.[avatar] ?? '') : '';
+    const label = name || avatar;
+
+    if (avatar) {
+        wrapper.classList.add('avatar');
+        const image = document.createElement('img');
+        image.src = context.getThumbnailUrl('persona', avatar);
+        image.alt = label ? `Persona: ${label}` : 'Persona';
+        image.addEventListener('error', () => {
+            wrapper.replaceChildren(createPersonaPlaceholder());
+        }, { once: true });
+        wrapper.append(image);
+
+        if (source !== 'locked') {
+            wrapper.classList.add('st-cq-chat-persona-inferred');
+        }
+    } else {
+        wrapper.classList.add('st-cq-chat-persona-missing');
+        wrapper.append(createPersonaPlaceholder());
+    }
+
+    const suffix = source === 'locked'
+        ? ''
+        : source === 'default'
+            ? ' (default persona)'
+            : source === 'current'
+                ? ' (current persona, not recorded in this chat)'
+                : '';
+    wrapper.title = label ? `Persona: ${label}${suffix}` : 'No persona recorded for this chat';
+
+    return wrapper;
+}
+
+/**
+ * Placeholder icon for chats whose persona cannot be resolved.
+ * @returns {HTMLElement}
+ */
+function createPersonaPlaceholder() {
+    const icon = document.createElement('i');
+    icon.className = 'fa-solid fa-user';
+    return icon;
+}
+
+/**
+ * Turns the raw last message text into a short one-paragraph preview.
+ * @param {string|undefined} message
+ * @returns {string}
+ */
+function getPreviewText(message) {
+    if (typeof message !== 'string') {
+        return '';
+    }
+
+    const text = message.replace(/\s+/g, ' ').trim();
+    if (!text || text === '[The message is empty]' || text === '[The chat is empty]') {
+        return '';
+    }
+
+    return text.length > 220 ? `${text.slice(0, 220)}…` : text;
 }
 
 /**
